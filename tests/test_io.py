@@ -1,0 +1,99 @@
+import pandas as pd
+
+from riskradar import cache_store as CS
+from riskradar import fred_client as FC
+from riskradar import refresh_service as RS
+from riskradar import telegram_client as tg
+from tests import synth
+
+
+def _fetcher(rb):
+    return lambda: {k: FC.FetchResult(k, True, v) for k, v in rb.items()}
+
+
+def test_publish_load_roundtrip(tmp_path):
+    rb = synth.make_raw_by_key(n=1200)
+    store = CS.LocalStore(tmp_path)
+    status = RS.run_refresh(fetcher=_fetcher(rb), store=store, notify=False)
+    assert status["status"] == "success"
+    st2, arts = store.load()
+    assert st2["active_cache_version"] == status["active_cache_version"]
+    assert set(arts) >= {"raw_fred", "signal_matrix", "chart_data", "synced_snapshot"}
+    assert len(arts["signal_matrix"]) == 6
+
+
+def test_pointer_written_last(tmp_path):
+    # data_status.json 은 versions/ 산출물이 모두 존재할 때만 유효해야 함
+    rb = synth.make_raw_by_key(n=1200)
+    store = CS.LocalStore(tmp_path)
+    RS.run_refresh(fetcher=_fetcher(rb), store=store, notify=False)
+    st, _ = store.load()
+    vdir = tmp_path / "versions" / st["active_cache_version"]
+    for name in CS.ARTIFACT_PARQUETS:
+        assert (vdir / f"{name}.parquet").exists()
+
+
+def test_partial_failure_uses_last_good_raw(tmp_path):
+    rb = synth.make_raw_by_key(n=1200)
+    store = CS.LocalStore(tmp_path)
+    # 1차: 전체 성공으로 last-good raw 확보
+    RS.run_refresh(fetcher=_fetcher(rb), store=store, notify=False)
+
+    # 2차: HY OAS fetch 실패
+    def partial():
+        out = {k: FC.FetchResult(k, True, v) for k, v in rb.items()}
+        out["HYOAS"] = FC.FetchResult("HYOAS", False, None, "timeout")
+        return out
+
+    status = RS.run_refresh(fetcher=partial, store=store, notify=False)
+    assert status["status"] == "partial_success"
+    assert status["stale_series"] == ["HYOAS"]
+    assert status["failed_series"] == ["HYOAS"]
+    _, arts = store.load()
+    assert len(arts["signal_matrix"]) == 6  # HY OAS 여전히 표시(직전 raw)
+
+
+def test_missing_required_no_lastgood_fails(tmp_path):
+    rb = synth.make_raw_by_key(n=1200)
+    store = CS.LocalStore(tmp_path)
+
+    def partial():
+        out = {k: FC.FetchResult(k, True, v) for k, v in rb.items()}
+        out["VIX"] = FC.FetchResult("VIX", False, None, "timeout")
+        return out
+
+    status = RS.run_refresh(fetcher=partial, store=store, notify=False)
+    assert status["status"] == "failed"
+
+
+def test_retention_prune(tmp_path):
+    rb = synth.make_raw_by_key(n=1100)
+    store = CS.LocalStore(tmp_path)
+    CS.KEEP_LAST_N = 3
+    import time
+    for _ in range(5):
+        RS.run_refresh(fetcher=_fetcher(rb), store=store, notify=False)
+        time.sleep(1.1)  # cache_version 초 단위 구분
+    versions = list((tmp_path / "versions").iterdir())
+    assert len(versions) <= 3
+
+
+def test_telegram_messages_build(tmp_path):
+    rb = synth.make_raw_by_key(n=1100)
+    store = CS.LocalStore(tmp_path)
+    RS.run_refresh(fetcher=_fetcher(rb), store=store, notify=False)
+    _, arts = store.load()
+    from riskradar import pipeline
+    snap = pipeline.compute_all(rb)["synced"]
+    ok = tg.build_success("2026-07-03 08:30 KST", "cv", arts["signal_matrix"], snap, [])
+    assert "RiskRadar 업데이트 완료" in ok
+    part = tg.build_partial("cv", arts["signal_matrix"], snap, ["HYOAS"], ["HYOAS"])
+    assert "부분 업데이트" in part and "HYOAS" in part
+    fail = tg.build_failure("build", "ValueError: x")
+    assert "실패" in fail
+
+
+def test_telegram_send_no_creds_returns_false(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    assert tg.send("hi") is False
