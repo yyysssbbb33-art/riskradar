@@ -21,8 +21,8 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           # ↓↓↓ 본인 값으로만 수정 ↓↓↓
-          HF_USER="여기에_HF_사용자명"
-          HF_SPACE="riskradar"
+          HF_USER="yyysssbbb2"
+          HF_SPACE="RiskRadar"
           # ↑↑↑ 본인 값으로만 수정 ↑↑↑
 
           git push --force \
