@@ -1,9 +1,6 @@
 name: refresh
 
 on:
-  schedule:
-    # 화~토 08:30 KST = 월~금 23:30 UTC
-    - cron: "30 23 * * 1-5"
   workflow_dispatch: {}   # 수동 실행 버튼
 
 concurrency:
