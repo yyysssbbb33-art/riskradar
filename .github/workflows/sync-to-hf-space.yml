@@ -1,0 +1,30 @@
+name: sync-to-hf-space
+
+# GitHub main에 push되면 HF Space로 코드를 자동 복제한다.
+# 방향은 GitHub -> HF 단방향. (HF Space에서 파일을 직접 수정하지 말 것 — 다음 sync에 덮어쓰인다)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # 수동 실행 버튼
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # 전체 히스토리 (force push용)
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # ↓↓↓ 본인 값으로만 수정 ↓↓↓
+          HF_USER="여기에_HF_사용자명"
+          HF_SPACE="riskradar"
+          # ↑↑↑ 본인 값으로만 수정 ↑↑↑
+
+          git push --force \
+            "https://${HF_USER}:${HF_TOKEN}@huggingface.co/spaces/${HF_USER}/${HF_SPACE}.git" \
+            HEAD:main
