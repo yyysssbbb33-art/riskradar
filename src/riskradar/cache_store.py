@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -23,7 +24,68 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 ARTIFACT_PARQUETS = ["raw_fred", "signal_matrix", "synced_snapshot", "chart_data"]
-KEEP_LAST_N = int(os.environ.get("CACHE_KEEP_LAST_N", "14"))
+# 최근 30일 변화 탭을 안정적으로 보여주려면 14개 보관은 부족하다.
+# 영업일 기준 30일 + 수동 실행 여유분을 고려해 기본 45개 버전을 보관한다.
+KEEP_LAST_N = int(os.environ.get("CACHE_KEEP_LAST_N", "45"))
+
+
+# ---------------------------------------------------------------- common ----
+
+def _version_dt(cache_version: str) -> datetime:
+    """YYYY-MM-DDTHH-MM-SSKST 형식의 cache_version을 naive datetime으로 변환."""
+    return datetime.strptime(cache_version, "%Y-%m-%dT%H-%M-%SKST")
+
+
+def _versions_from_paths(paths: list[str]) -> list[str]:
+    versions = {
+        p.split("/")[1]
+        for p in paths
+        if p.startswith("versions/") and len(p.split("/")) >= 3
+    }
+    return sorted(versions, key=_safe_version_sort)
+
+
+def _safe_version_sort(cache_version: str):
+    try:
+        return _version_dt(cache_version)
+    except ValueError:
+        return datetime.min
+
+
+def _history_from_versions(loader, versions: list[str], days: int = 30) -> pd.DataFrame:
+    """여러 version의 signal_matrix를 합쳐 UI용 일별 스냅샷 히스토리를 만든다."""
+    if not versions:
+        return pd.DataFrame()
+
+    cutoff = datetime.now() - timedelta(days=days)
+    recent_versions = []
+    for v in versions:
+        try:
+            if _version_dt(v) >= cutoff:
+                recent_versions.append(v)
+        except ValueError:
+            continue
+
+    rows = []
+    for v in recent_versions:
+        try:
+            matrix = loader(v, "signal_matrix")
+        except Exception as e:  # noqa: BLE001 - 일부 과거 버전 손상은 전체 UI를 깨지 않음
+            log.warning("skip history version %s: %s", v, e)
+            continue
+        if matrix.empty:
+            continue
+        ts = _version_dt(v)
+        m = matrix.copy()
+        m.insert(0, "cache_version", v)
+        m.insert(1, "snapshot_at_kst", ts.strftime("%Y-%m-%d %H:%M:%S"))
+        m.insert(2, "snapshot_date", ts.strftime("%Y-%m-%d"))
+        rows.append(m)
+
+    if not rows:
+        return pd.DataFrame()
+    hist = pd.concat(rows, ignore_index=True)
+    return hist.sort_values(["snapshot_at_kst", "key"]).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------- local -----
@@ -40,6 +102,8 @@ class LocalStore:
             artifacts[name].to_parquet(vdir / f"{name}.parquet", index=False)
         (vdir / "data_quality.json").write_text(
             json.dumps(artifacts["data_quality"], ensure_ascii=False, indent=2))
+        (vdir / "status.json").write_text(
+            json.dumps(status, ensure_ascii=False, indent=2))
         _verify(vdir)
         # 포인터 마지막
         (self.root / "data_status.json").write_text(
@@ -51,6 +115,20 @@ class LocalStore:
         vdir = self.root / "versions" / status["active_cache_version"]
         arts = {n: pd.read_parquet(vdir / f"{n}.parquet") for n in ARTIFACT_PARQUETS}
         return status, arts
+
+    def load_artifact(self, cache_version: str, name: str) -> pd.DataFrame:
+        if name not in ARTIFACT_PARQUETS:
+            raise ValueError(f"unknown parquet artifact: {name}")
+        return pd.read_parquet(self.root / "versions" / cache_version / f"{name}.parquet")
+
+    def list_versions(self) -> list[str]:
+        vroot = self.root / "versions"
+        if not vroot.exists():
+            return []
+        return sorted([p.name for p in vroot.iterdir() if p.is_dir()], key=_safe_version_sort)
+
+    def load_history(self, days: int = 30) -> pd.DataFrame:
+        return _history_from_versions(self.load_artifact, self.list_versions(), days=days)
 
     def last_good_raw(self) -> pd.DataFrame | None:
         p = self.root / "data_status.json"
@@ -72,7 +150,7 @@ class LocalStore:
 class HfDatasetStore:
     """huggingface_hub 기반. 로컬과 동일한 레이아웃을 원격 repo에 유지한다."""
 
-    def __init__(self, repo_id: str, token: str):
+    def __init__(self, repo_id: str, token: str | None):
         from huggingface_hub import HfApi
         self.repo_id = repo_id
         self.api = HfApi(token=token)
@@ -89,6 +167,9 @@ class HfDatasetStore:
         ops.append(CommitOperationAdd(
             f"versions/{cache_version}/data_quality.json",
             json.dumps(artifacts["data_quality"], ensure_ascii=False).encode()))
+        ops.append(CommitOperationAdd(
+            f"versions/{cache_version}/status.json",
+            json.dumps(status, ensure_ascii=False, indent=2).encode()))
         # 1) 산출물 커밋
         self.api.create_commit(self.repo_id, repo_type="dataset", operations=ops,
                                commit_message=f"artifacts {cache_version}")
@@ -112,6 +193,20 @@ class HfDatasetStore:
             arts[n] = pd.read_parquet(fp)
         return status, arts
 
+    def load_artifact(self, cache_version: str, name: str) -> pd.DataFrame:
+        if name not in ARTIFACT_PARQUETS:
+            raise ValueError(f"unknown parquet artifact: {name}")
+        from huggingface_hub import hf_hub_download
+        fp = hf_hub_download(self.repo_id, f"versions/{cache_version}/{name}.parquet",
+                             repo_type="dataset", token=self.token)
+        return pd.read_parquet(fp)
+
+    def list_versions(self) -> list[str]:
+        return _versions_from_paths(self.api.list_repo_files(self.repo_id, repo_type="dataset"))
+
+    def load_history(self, days: int = 30) -> pd.DataFrame:
+        return _history_from_versions(self.load_artifact, self.list_versions(), days=days)
+
     def last_good_raw(self) -> pd.DataFrame | None:
         from huggingface_hub import hf_hub_download
         from huggingface_hub.utils import EntryNotFoundError
@@ -128,8 +223,7 @@ class HfDatasetStore:
     def _prune(self):
         try:
             files = self.api.list_repo_files(self.repo_id, repo_type="dataset")
-            versions = sorted({f.split("/")[1] for f in files
-                               if f.startswith("versions/")})
+            versions = _versions_from_paths(files)
             for old in versions[:-KEEP_LAST_N]:
                 self.api.delete_folder(f"versions/{old}", self.repo_id,
                                        repo_type="dataset",
@@ -151,6 +245,7 @@ def get_store():
     """환경변수로 backend 결정."""
     backend = os.environ.get("CACHE_BACKEND", "local")
     if backend == "hf_dataset":
+        # 공개 Dataset을 읽기만 하는 Space는 HF_TOKEN 없이 동작한다.
         return HfDatasetStore(os.environ["HF_DATASET_REPO_ID"],
-                              os.environ["HF_TOKEN"])
+                              os.environ.get("HF_TOKEN"))
     return LocalStore(os.environ.get("CACHE_LOCAL_ROOT", "./_cache"))

@@ -97,3 +97,14 @@ def test_telegram_send_no_creds_returns_false(monkeypatch):
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
     assert tg.send("hi") is False
+
+
+def test_load_30d_history_from_versions(tmp_path):
+    rb = synth.make_raw_by_key(n=1200)
+    store = CS.LocalStore(tmp_path)
+    status = RS.run_refresh(fetcher=_fetcher(rb), store=store, notify=False)
+    hist = store.load_history(days=30)
+    assert not hist.empty
+    assert set(hist["key"]) == set(rb.keys())
+    assert status["active_cache_version"] in set(hist["cache_version"])
+    assert {"snapshot_date", "latest_value", "state_label"}.issubset(hist.columns)
