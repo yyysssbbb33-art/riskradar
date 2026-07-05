@@ -9,7 +9,8 @@ from typing import Any
 
 import pandas as pd
 
-from .display_text import LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y, core_name
+from .display_text import (LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y,
+                           core_name, plain_language, state_name)
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .interpretation_cards import get_interpretation_card
 from .state_guidance import render_state_guidance
@@ -60,39 +61,39 @@ def _linked_combo_markdown(data_quality: dict | None, key: str) -> str:
     readings = _relevant_readings(data_quality, key)
     if not readings:
         return (
-            "### 현재 연결된 조합\n"
-            "오늘의 해석 엔진에서 이 지표와 직접 연결된 주요 조합은 현재 따로 잡히지 않았습니다. "
+            "### 이 지표와 함께 나타난 흐름\n"
+            "오늘 데이터에서는 이 지표와 함께 따로 설명할 만한 주요 조합이 잡히지 않았습니다. "
             "이는 지표가 중요하지 않다는 뜻이 아니라, 현재 정의된 조합 규칙에서 별도 패턴이 탐지되지 않았다는 뜻입니다."
         )
 
-    lines = ["### 현재 연결된 조합"]
+    lines = ["### 이 지표와 함께 나타난 흐름"]
     for reading in readings:
-        label = str(reading.get("label", "현재 조합"))
-        observed = str(reading.get("observed", ""))
+        label = plain_language(str(reading.get("label", "현재 조합")))
+        observed = plain_language(str(reading.get("observed", "")))
         lines += ["", f"#### {label}", observed]
 
         explanations = _reading_explanations(reading)
         supported = [
-            explanations[eid]
+            plain_language(explanations[eid])
             for eid in (reading.get("supported_ids") or [])
             if eid in explanations
         ]
         weakened = [
-            explanations[eid]
+            plain_language(explanations[eid])
             for eid in (reading.get("weakened_ids") or [])
             if eid in explanations
         ]
 
         if supported:
-            lines.append("- **현재 상대적으로 더 잘 맞는 설명:** " + " / ".join(supported))
+            lines.append("- **지금 데이터와 더 잘 맞는 설명:** " + " / ".join(supported))
         else:
-            lines.append("- **현재 상대적으로 더 잘 맞는 설명:** 확인지표만으로 한 설명이 뚜렷하게 우세하지 않습니다.")
+            lines.append("- **지금 데이터와 더 잘 맞는 설명:** 같이 본 지표만으로 한 설명이 뚜렷하게 앞선다고 보기 어렵습니다.")
         if weakened:
-            lines.append("- **반대 증거·약해지는 설명:** " + " / ".join(weakened))
+            lines.append("- **지금 데이터와 덜 맞는 설명:** " + " / ".join(weakened))
         if reading.get("conflict"):
-            lines.append(f"- **결과가 엇갈리는 부분:** {reading['conflict']}")
+            lines.append(f"- **서로 다른 설명을 가리키는 부분:** {reading['conflict']}")
 
-    lines.append("\n더 자세한 확인지표별 분기는 **오늘의 해석** 탭에서 볼 수 있습니다.")
+    lines.append("\n같이 본 지표가 다르게 움직일 때의 해석은 **오늘의 해석** 탭에서 더 자세히 볼 수 있습니다.")
     return "\n".join(lines)
 
 
@@ -109,9 +110,9 @@ def render_indicator_detail(
     key = str(r["key"])
 
     facts = [
-        "## 현재 데이터와 연결해서 보면",
+        "## 지금 데이터로 보면",
         "",
-        f"- **상태:** {r['state_label']}",
+        f"- **상태:** {state_name(str(r.get('state_code', '')), str(r.get('state_label', '')), drop=bool(r.get('drop_flag', False)), key=key)}",
         f"- **최신값:** {fmt_value(r['latest_value'], r['value_unit'])}",
         f"- **관측일:** {r['latest_observed_date']}",
         f"- **{LABEL_1M}:** {fmt_change(r['change_20obs'], r['change_unit'])}",
@@ -129,6 +130,6 @@ def render_indicator_detail(
         "",
         f"# {core_name(key)} 상세 설명",
         "",
-        get_interpretation_card(key),
+        plain_language(get_interpretation_card(key)),
     ]
     return "\n".join(facts)

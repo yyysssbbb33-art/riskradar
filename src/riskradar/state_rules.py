@@ -11,12 +11,16 @@ import numpy as np
 import pandas as pd
 
 from . import config as C
+from .display_text import state_name
+from .formatting import fmt_change, fmt_pct
 
 LABELS = {
-    "calm": "평온", "watch": "관찰", "neutral": "중립", "stress": "스트레스",
-    "normal": "정상", "inverted": "역전", "long_inverted": "장기역전",
-    "re_normalizing": "재정상화 관찰", "re_normalized": "재정상화 확정",
-    "stable": "안정", "rise_watch": "상승 관찰", "rate_shock": "금리 충격",
+    "calm": "평소 수준", "watch": "평소보다 높음", "neutral": "보통 수준", "stress": "매우 높은 편",
+    "normal": "장기금리가 더 높음", "inverted": "단기금리가 더 높음",
+    "long_inverted": "단기금리가 오래 더 높음",
+    "re_normalizing": "장기금리가 다시 높아짐",
+    "re_normalized": "장기금리가 다시 높은 상태가 이어짐",
+    "stable": "큰 움직임 없음", "rise_watch": "오르는 중", "rate_shock": "빠르게 오름",
 }
 
 
@@ -169,24 +173,29 @@ def state_reason(key: str, row: pd.Series) -> str:
     p10 = row.get("percentile_10y")
 
     if s.state_kind == "vix":
-        ptxt = (f"최근 10년 위치 {p10:.0f}%" if not pd.isna(p10)
-                else "최근 10년 위치 계산 불가")
-        return f"현재 {row['value']:.1f}, {ptxt}를 기준으로 '{LABELS[code]}' 상태입니다."
+        ptxt = (f"최근 10년 관측일의 {fmt_pct(p10)}" if not pd.isna(p10)
+                else "최근 10년 비교 불가")
+        return f"현재 {row['value']:.1f}, {ptxt}. 현재 상태는 '{state_name(code, key=key)}'입니다."
 
     if s.state_kind == "hyoas":
-        ptxt = (f"최근 10년 위치 {p10:.0f}%" if not pd.isna(p10)
-                else "최근 10년 위치 계산 불가")
-        return f"현재 {row['value']:.0f}bp, {ptxt}를 기준으로 '{LABELS[code]}' 상태입니다."
+        ptxt = (f"최근 10년 관측일의 {fmt_pct(p10)}" if not pd.isna(p10)
+                else "최근 10년 비교 불가")
+        return f"현재 {row['value']:.0f}bp, {ptxt}. 현재 상태는 '{state_name(code, key=key)}'입니다."
 
     if s.state_kind == "t10y3m":
         value_pctp = row["value"] / 100.0
-        return (f"현재 금리차 {value_pctp:+.2f}%p. 경기 사이클 경로는 "
-                f"'{LABELS[code]}' 상태입니다.")
+        if value_pctp > 0:
+            relation = f"현재 10년 금리가 3개월 금리보다 {abs(value_pctp):.2f}%p 높습니다."
+        elif value_pctp < 0:
+            relation = f"현재 3개월 금리가 10년 금리보다 {abs(value_pctp):.2f}%p 높습니다."
+        else:
+            relation = "현재 10년 금리와 3개월 금리가 같습니다."
+        return f"{relation} 지금 상태는 '{state_name(code, key=key)}'입니다."
 
-    ctxt = (f"약 3개월 변화 {c60:+.0f}bp" if not pd.isna(c60)
-            else "약 3개월 변화 계산 불가")
-    base = f"현재 {row['value']:.2f}%, {ctxt}를 기준으로 '{LABELS[code]}' 상태입니다."
+    ctxt = (f"약 3개월 동안 {fmt_change(c60, s.change_unit)}" if not pd.isna(c60)
+            else "약 3개월 변화는 비교 불가")
+    base = f"현재 {row['value']:.2f}%, {ctxt}. 현재 상태는 '{state_name(code, drop=bool(row.get('drop_flag')), key=key)}'입니다."
     if row.get("drop_flag"):
-        base += " 금리 급락 플래그가 있어 완화 기대인지 경기둔화 우려인지 다른 지표와 구분해야 합니다."
+        base += " 빠른 하락이 금리인하 기대 때문인지 경기둔화 우려 때문인지는 다른 지표와 함께 봅니다."
     return base
 

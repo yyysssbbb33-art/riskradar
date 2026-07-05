@@ -14,7 +14,8 @@ import pandas as pd
 
 from . import axis_engine, cache_store, interpretation_engine
 from . import config as C
-from .display_text import LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y, core_name
+from .display_text import (LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y,
+                           axis_name, core_name, plain_language, state_name)
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .interpretation_cards import get_interpretation_card
 from .indicator_detail_view import render_indicator_detail
@@ -24,37 +25,52 @@ from .today_view import render_today_markdown
 KST = ZoneInfo(C.APP_TIMEZONE)
 
 GUIDE_INTRO = r"""
-## RiskRadar를 읽는 법
+## RiskRadar를 읽는 순서
 
-RiskRadar는 미국 시장을 **변동성·신용·경기 사이클·금리**로 나눠 보는 계기판입니다. 하나의 점수로 시장을 단정하지 않고, 현재 어떤 축과 조합이 움직이는지 확인하는 데 초점을 둡니다.
+RiskRadar는 미국 시장을 **주식시장 흔들림·기업 자금 부담·경기 흐름·금리 움직임**으로 나눠 보는 계기판입니다. 하나의 점수로 시장을 단정하지 않고, 지금 어떤 부분이 움직이는지와 무엇을 더 확인해야 하는지 보여줍니다.
 
-이 앱은 폭락·침체 시점을 예측하거나 매수·매도 타이밍을 정하지 않습니다. 대신 다음 순서로 읽습니다.
+1. **현재 상황**에서 6개 핵심 지표의 상태와 지금 뜻을 봅니다.
+2. **오늘의 해석**에서 여러 지표를 같이 봤을 때 어떤 모습인지 확인합니다.
+3. 각 지표의 **상세 설명 보기**를 펼쳐, 지금 상태에서 다음에 무엇을 봐야 하는지 확인합니다.
 
-1. **현재 상황**에서 6개 핵심 지표의 최신 상태와 한줄 해석을 본다.
-2. **오늘의 해석**에서 지표 조합과 보조지표 확인 결과를 본다.
-3. **최근 30일**에서 선택한 지표의 흐름과 상세 해석 카드를 본다.
-4. 이해가 어려운 조합은 이 탭의 **지표를 같이 보는 법**을 참고한다.
+### `최근 5년·10년 중 현재 위치` 읽는 법
 
-### 표의 쉬운 용어
+`최근 5년 중 현재 위치: 높은 편 · 82%의 날보다 높음`은 **위험확률 82%가 아닙니다.**
 
-| 화면 표현 | 실제 계산 | 의미 |
+최근 5년의 관측일을 줄 세웠을 때 현재 값보다 낮았던 날이 82%였다는 뜻입니다. **위험확률이나 하락확률이 아닙니다.**
+
+| 화면 표현 | 실제 계산 | 쉬운 뜻 |
 |---|---|---|
-| **약 1개월 변화** | 20개 관측치 전 대비 | 달력 1개월과 정확히 같지는 않음 |
-| **약 3개월 변화** | 60개 관측치 전 대비 | 실제 관측치 개수 기준 |
-| **최근 5년 위치** | 5년 백분위 | 90%면 과거 관측값 약 90%보다 현재값이 높음 |
-| **최근 10년 위치** | 10년 백분위 | 장기 역사 속 현재 위치 |
+| **약 1개월 변화** | 20개 관측치 전 대비 | 대략 한 달 전보다 얼마나 변했는지 |
+| **약 3개월 변화** | 60개 관측치 전 대비 | 대략 세 달 전보다 얼마나 변했는지 |
+| **최근 5년 중 현재 위치** | 최근 5년 안의 상대 위치 | `높은 편 · 82%의 날보다 높음`처럼 표시 |
+| **최근 10년 중 현재 위치** | 최근 10년 안의 상대 위치 | 장기적으로 지금 값이 높은지 낮은지 |
 
-상태 라벨은 수치를 빠르게 읽기 위한 C등급 참고선입니다. 라벨만 보지 말고 **최신값·변화속도·역사적 위치·조합 해석**을 같이 봅니다.
+상태 이름은 숫자를 빨리 읽기 위한 간단한 표지입니다. 상태 이름만 보지 말고 **현재값·최근 변화·과거 위치·같이 볼 지표**를 함께 봅니다.
 """
-
 BOARD_HELP = r"""
 ### 현재 상황 읽는 법
 
-먼저 **HY OAS와 VIX**를 보고 신용스프레드와 주식 변동성이 어떻게 움직이는지 확인합니다. 다음으로 **2년물·30년물·10년 실질금리**의 방향을 보고, **10년-3개월 금리차**는 경기 사이클의 배경으로 분리해서 봅니다.
+먼저 **신용등급 낮은 기업의 추가금리**와 **주식시장이 예상하는 흔들림(VIX)**을 봅니다. 주식시장만 흔들리는지, 기업들이 회사채를 발행할 때 더 높은 금리를 요구받는지도 같이 확인합니다.
 
-- `약 1개월 변화`, `약 3개월 변화`는 실제 관측치 20개·60개 기준입니다.
-- `최근 5년 위치`, `최근 10년 위치`는 과거 대비 현재 위치입니다.
-- `한줄 해석`은 현재 지표 하나를 사실 중심으로 읽는 문장입니다. 전체 시장 결론이 아닙니다.
+그다음 **2년·30년 국채금리와 물가 영향을 뺀 10년 금리**가 어느 쪽으로 움직이는지 봅니다. 마지막으로 **10년 금리와 3개월 금리의 관계**는 현재 시장 불안과 따로 떼어 경기 흐름의 배경으로 봅니다.
+
+- `82%의 날보다 높음`은 위험확률이 아니라 과거 관측값과의 비교입니다.
+- `지금 뜻`은 현재 지표 하나를 읽는 문장입니다. 전체 시장 결론이 아닙니다.
+"""
+
+EASY_GLOSSARY = r"""
+### 먼저 이것만 알아두면 됩니다
+
+| 화면 이름 | 쉽게 말하면 | 숫자가 오르면 |
+|---|---|---|
+| **신용등급 낮은 기업의 추가금리** | 신용등급이 낮은 기업이 국채보다 더 얹어줘야 하는 금리 | 시장이 신용등급 낮은 기업에 더 높은 금리를 요구함 |
+| **신용등급 높은 기업의 추가금리** | 신용등급이 높은 기업도 국채보다 더 얹어줘야 하는 금리 | 기업 자금 부담 변화가 더 넓게 퍼지는지 확인할 단서 |
+| **채권시장이 보는 10년 물가 예상** | 일반 국채와 물가에 따라 원금이 조정되는 국채의 금리 차이 | 시장이 장기 물가를 더 높게 보는 방향 |
+| **장기채 추가 보상** | 장기채를 오래 들고 있을 불확실성 때문에 시장이 더 요구하는 보상 | 장기채 수요·공급이나 불확실성 요인을 더 확인 |
+| **물가 영향을 뺀 10년 금리** | 물가 영향을 빼고 본 장기금리 | 미래에 받을 돈을 오늘 가치로 계산할 때 더 많이 깎는 방향 |
+
+`추가금리`는 기업이 실제로 내는 대출금리 자체가 아닙니다. **같은 기간의 미국 국채보다 회사채가 얼마나 더 높은 금리를 요구받는지**를 뜻합니다.
 """
 
 HISTORY_HELP = r"""
@@ -72,9 +88,9 @@ SYNCED_HELP = r"""
 """
 
 SIGNAL_MATRIX_HELP = r"""
-### 상세 지표표 읽는 법
+### 전체 지표 비교 읽는 법
 
-핵심 6개 지표의 최신값·변화·역사적 위치·상태 근거를 한 번에 보는 상세표입니다. 내부 코드명 대신 사용자용 표현만 보여줍니다.
+핵심 6개 지표의 최신값·변화·과거 위치·표시 이유를 한 번에 보는 표입니다. 내부 코드명 대신 사용자용 표현만 보여줍니다.
 """
 
 CHART_HELP = r"""
@@ -91,33 +107,33 @@ def _days_since(date_str: str) -> int:
 
 def _one_line_interpretation(row: pd.Series) -> str:
     key = row["key"]
-    state = row["state_label"]
+    code = str(row.get("state_code", ""))
     drop = bool(row.get("drop_flag", False))
 
     if key == "VIX":
-        if state == "평온":
-            return "주식시장 기대변동성은 현재 기본 구간입니다. HY OAS와 함께 봅니다."
-        if state == "관찰":
-            return "주식시장 기대변동성이 평소보다 커진 상태입니다. 지속성과 신용스프레드 동반 여부를 봅니다."
-        return "주식시장 기대변동성이 높은 상태입니다. 하루 움직임보다 지속성과 신용시장 동반 여부가 중요합니다."
+        if code == "calm":
+            return "주식시장이 예상하는 흔들림은 현재 평소 수준입니다. 회사채 시장도 조용한지 같이 봅니다."
+        if code == "watch":
+            return "주식시장이 예상하는 흔들림이 커졌습니다. 며칠 이어지는지와 회사채 시장도 같이 움직이는지 봅니다."
+        return "주식시장이 큰 흔들림을 가격에 반영하고 있습니다. 하루 급등인지, 회사채 시장까지 함께 움직이는지가 중요합니다."
 
     if key == "HYOAS":
-        if state in ("평온", "중립"):
-            return "하이일드 신용스프레드는 현재 큰 확대 상태가 아닙니다. IG OAS와 변화 범위를 같이 봅니다."
-        if state == "관찰":
-            return "하이일드 신용스프레드가 확대된 상태입니다. 투자등급까지 넓어지는지 확인합니다."
-        return "하이일드 신용스프레드가 높은 상태입니다. VIX·IG OAS와 함께 변화 범위를 봅니다."
+        if code in ("calm", "neutral"):
+            return "신용등급 낮은 기업이 돈을 빌릴 때 요구받는 추가금리는 아직 크게 벌어지지 않았습니다."
+        if code == "watch":
+            return "신용등급 낮은 기업이 돈을 빌릴 때 요구받는 추가금리가 커지고 있습니다. 신용등급 높은 기업의 추가금리도 같은 움직임인지 봅니다."
+        return "신용등급 낮은 기업이 돈을 빌리는 부담이 크게 커진 방향입니다. 주식시장 흔들림과 신용등급 높은 기업의 추가금리도 같이 봅니다."
 
     if key == "T10Y3M":
-        return f"경기 사이클 경로는 현재 '{state}'입니다. 현재 시장 공포와는 별개의 선행축으로 봅니다."
+        return f"현재 10년 금리와 3개월 금리의 관계는 '{state_name(code, row.get('state_label'), key=key)}'입니다. 지금의 시장 불안과는 따로 떼어 경기 흐름의 배경으로 봅니다."
 
     if drop:
-        return "금리가 빠르게 하락한 플래그가 있습니다. 완화 기대인지 경기둔화 우려인지 다른 지표와 구분합니다."
-    if state == "안정":
-        return "최근 변화속도는 RiskRadar 기준상 기본 구간입니다."
-    if state == "상승 관찰":
-        return "최근 금리 상승속도가 커진 상태입니다. 다른 만기와 실질·명목 구성요인을 함께 봅니다."
-    return "최근 금리 상승속도가 큰 상태입니다. 원인은 다른 금리와 보조지표 조합으로 구분합니다."
+        return "금리가 빠르게 내려갔습니다. 좋은 금리인하 기대인지, 경기둔화 우려인지 다른 지표와 함께 봅니다."
+    if code == "stable":
+        return "최근 금리 변화는 큰 편이 아닙니다."
+    if code == "rise_watch":
+        return "최근 금리가 눈에 띄게 오르고 있습니다. 다른 만기 금리와 물가 요인을 같이 봅니다."
+    return "최근 금리가 빠르게 오르고 있습니다. 어떤 원인인지 다른 금리와 보조지표를 함께 봅니다."
 
 
 def _board_df(matrix: pd.DataFrame) -> pd.DataFrame:
@@ -125,7 +141,7 @@ def _board_df(matrix: pd.DataFrame) -> pd.DataFrame:
     for _, r in matrix.iterrows():
         rows.append({
             "지표": core_name(str(r["key"])),
-            "상태": r["state_label"],
+            "상태": state_name(str(r.get("state_code", "")), str(r.get("state_label", "")), drop=bool(r.get("drop_flag", False)), key=str(r.get("key", ""))),
             "최신값": fmt_value(r["latest_value"], r["value_unit"]),
             "관측일": r["latest_observed_date"],
             "경과일": _days_since(r["latest_observed_date"]),
@@ -133,9 +149,9 @@ def _board_df(matrix: pd.DataFrame) -> pd.DataFrame:
             LABEL_3M: fmt_change(r["change_60obs"], r["change_unit"]),
             LABEL_5Y: fmt_pct(r["percentile_5y"]),
             LABEL_10Y: fmt_pct(r["percentile_10y"]),
-            "급락": "⚠︎" if r["drop_flag"] else "",
-            "한줄 해석": _one_line_interpretation(r),
-            "상태 근거": r["state_reason"],
+            "빠르게 내림": "⚠︎" if r["drop_flag"] else "",
+            "지금 뜻": _one_line_interpretation(r),
+            "왜 이렇게 표시됐나": plain_language(str(r["state_reason"])),
         })
     return pd.DataFrame(rows)
 
@@ -154,7 +170,7 @@ def _synced_df(arts: dict) -> pd.DataFrame:
             "값": fmt_value(r["value"], series.value_unit),
             LABEL_1M: fmt_change(r["change_20obs"], series.change_unit),
             LABEL_3M: fmt_change(r["change_60obs"], series.change_unit),
-            "상태": r["state_label"],
+            "상태": state_name(str(r.get("state_code", "")), str(r.get("state_label", "")), drop=bool(r.get("drop_flag", False)), key=str(r.get("key", ""))),
         })
     return pd.DataFrame(rows)
 
@@ -166,23 +182,27 @@ def _history_table(history: pd.DataFrame, key: str) -> pd.DataFrame:
     if d.empty:
         return pd.DataFrame([{"안내": f"{core_name(key)} 기록이 없습니다."}])
     d = d.sort_values("snapshot_at_kst")
+    if "state_code" in d.columns:
+        d["상태"] = [state_name(str(c), str(l), drop=bool(drop), key=key) for c, l, drop in zip(d["state_code"], d["state_label"], d["drop_flag"])]
+    else:
+        d["상태"] = d["state_label"]
     d["최신값"] = [fmt_value(v, u) for v, u in zip(d["latest_value"], d["value_unit"])]
     d[LABEL_1M] = [fmt_change(v, u) for v, u in zip(d["change_20obs"], d["change_unit"])]
     d[LABEL_3M] = [fmt_change(v, u) for v, u in zip(d["change_60obs"], d["change_unit"])]
     d[LABEL_5Y] = [fmt_pct(v) for v in d["percentile_5y"]]
     d[LABEL_10Y] = [fmt_pct(v) for v in d["percentile_10y"]]
-    d["급락"] = ["⚠︎" if x else "" for x in d["drop_flag"]]
+    d["빠르게 내림"] = ["⚠︎" if x else "" for x in d["drop_flag"]]
     d["지표"] = core_name(key)
+    d["state_reason"] = d["state_reason"].astype(str).map(plain_language)
     return d[[
-        "snapshot_date", "snapshot_at_kst", "지표", "state_label",
+        "snapshot_date", "snapshot_at_kst", "지표", "상태",
         "최신값", "latest_observed_date", LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y,
-        "급락", "state_reason",
+        "빠르게 내림", "state_reason",
     ]].rename(columns={
         "snapshot_date": "저장일",
         "snapshot_at_kst": "저장시각(KST)",
-        "state_label": "상태",
         "latest_observed_date": "관측일",
-        "state_reason": "상태 근거",
+        "state_reason": "왜 이렇게 표시됐나",
     })
 
 
@@ -191,16 +211,16 @@ def _signal_matrix_df(matrix: pd.DataFrame) -> pd.DataFrame:
     for _, r in matrix.iterrows():
         rows.append({
             "지표": core_name(str(r["key"])),
-            "분류": r["axis"],
+            "무엇을 보는 지표": axis_name(str(r["axis"])),
             "관측일": r["latest_observed_date"],
             "최신값": fmt_value(r["latest_value"], r["value_unit"]),
             LABEL_1M: fmt_change(r["change_20obs"], r["change_unit"]),
             LABEL_3M: fmt_change(r["change_60obs"], r["change_unit"]),
             LABEL_5Y: fmt_pct(r["percentile_5y"]),
             LABEL_10Y: fmt_pct(r["percentile_10y"]),
-            "상태": r["state_label"],
-            "급락": "⚠︎" if r["drop_flag"] else "",
-            "상태 근거": r["state_reason"],
+            "상태": state_name(str(r.get("state_code", "")), str(r.get("state_label", "")), drop=bool(r.get("drop_flag", False)), key=str(r.get("key", ""))),
+            "빠르게 내림": "⚠︎" if r["drop_flag"] else "",
+            "왜 이렇게 표시됐나": plain_language(str(r["state_reason"])),
         })
     return pd.DataFrame(rows)
 
@@ -330,14 +350,16 @@ def build_app():
     choices = [(core_name(k), k) for k in C.SERIES_ORDER]
 
     with gr.Blocks(title="RiskRadar") as demo:
-        gr.Markdown("# RiskRadar — 미국 매크로 스트레스 계기판")
+        gr.Markdown("# RiskRadar — 미국 시장 흐름 신호판")
         gr.Markdown(
-            "6개 핵심 지표와 3개 보조지표를 함께 읽어, 현재 어떤 축과 조합이 움직이는지 보여주는 읽기 전용 대시보드입니다. "
+            "6개 핵심 지표와 3개 보조 지표를 함께 읽어, 지금 어떤 부분이 움직이고 다음에 무엇을 확인할지 보여주는 읽기 전용 대시보드입니다. "
             "단일 위험점수나 매매 신호는 만들지 않습니다."
         )
 
         with gr.Tab("현재 상황"):
             gr.Markdown(BOARD_HELP)
+            with gr.Accordion("용어가 어렵다면 먼저 보기", open=False):
+                gr.Markdown(EASY_GLOSSARY)
             gr.Dataframe(_board_df(arts["signal_matrix"]), wrap=True, interactive=False)
 
             gr.Markdown("## 지표별 상세 설명")
@@ -351,17 +373,17 @@ def build_app():
                     continue
                 with gr.Accordion(f"{core_name(key)} 상세 설명 보기", open=False):
                     gr.Markdown(
-                        render_indicator_detail(
+                        plain_language(render_indicator_detail(
                             row,
                             data_quality,
                             _one_line_interpretation(row),
                             frames=frames,
                             aux_df=aux_df,
                             matrix=arts["signal_matrix"],
-                        )
+                        ))
                     )
 
-            with gr.Accordion("현재 조합 해석 전체 보기", open=False):
+            with gr.Accordion("지표를 함께 본 해석 전체 보기", open=False):
                 gr.Markdown(today_md)
 
         with gr.Tab("오늘의 해석"):
@@ -372,7 +394,7 @@ def build_app():
             if history_error:
                 gr.Markdown(f"⚠️ {history_error}")
             selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
-            interpretation_card = gr.Markdown(get_interpretation_card(default_key))
+            interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
             hist_plot = gr.LinePlot(
                 value=_history_plot_data(history, default_key),
                 x="저장일", y="최신값",
@@ -381,7 +403,7 @@ def build_app():
             hist_table = gr.Dataframe(_history_table(history, default_key), wrap=True, interactive=False)
             selector.change(
                 fn=lambda key: (
-                    get_interpretation_card(key),
+                    plain_language(get_interpretation_card(key)),
                     _history_plot_data(history, key),
                     _history_table(history, key),
                 ),
@@ -393,7 +415,7 @@ def build_app():
             gr.Markdown(SYNCED_HELP)
             gr.Dataframe(_synced_df(arts), interactive=False)
 
-        with gr.Tab("상세 지표표"):
+        with gr.Tab("전체 지표 비교"):
             gr.Markdown(SIGNAL_MATRIX_HELP)
             gr.Dataframe(_signal_matrix_df(arts["signal_matrix"]), wrap=True, interactive=False)
 
@@ -409,8 +431,8 @@ def build_app():
         with gr.Tab("지표 설명"):
             gr.Markdown(GUIDE_INTRO)
             guide_selector = gr.Dropdown(choices=choices, value=default_key, label="상세 설명을 볼 지표")
-            guide_card = gr.Markdown(get_interpretation_card(default_key))
-            guide_selector.change(fn=get_interpretation_card, inputs=guide_selector, outputs=guide_card)
-            gr.Markdown(RELATIONSHIP_GUIDE)
+            guide_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
+            guide_selector.change(fn=lambda key: plain_language(get_interpretation_card(key)), inputs=guide_selector, outputs=guide_card)
+            gr.Markdown(plain_language(RELATIONSHIP_GUIDE))
 
     return demo

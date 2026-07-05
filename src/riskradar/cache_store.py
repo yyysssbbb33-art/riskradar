@@ -168,6 +168,15 @@ class LocalStore:
         f = vdir / "raw_fred.parquet"
         return pd.read_parquet(f) if f.exists() else None
 
+    def last_good_aux(self) -> pd.DataFrame | None:
+        p = self.root / "data_status.json"
+        if not p.exists():
+            return None
+        status = json.loads(p.read_text())
+        vdir = self.root / "versions" / status["active_cache_version"]
+        f = vdir / "aux_signal_matrix.parquet"
+        return pd.read_parquet(f) if f.exists() else None
+
     def _prune(self):
         vs = sorted((self.root / "versions").iterdir())
         for old in vs[:-KEEP_LAST_N]:
@@ -270,6 +279,19 @@ class HfDatasetStore:
                                  repo_type="dataset", token=self.token)
             cv = json.loads(Path(sp).read_text())["active_cache_version"]
             fp = hf_hub_download(self.repo_id, f"versions/{cv}/raw_fred.parquet",
+                                 repo_type="dataset", token=self.token)
+            return pd.read_parquet(fp)
+        except (EntryNotFoundError, Exception):  # noqa: BLE001
+            return None
+
+    def last_good_aux(self) -> pd.DataFrame | None:
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.utils import EntryNotFoundError
+        try:
+            sp = hf_hub_download(self.repo_id, "data_status.json",
+                                 repo_type="dataset", token=self.token)
+            cv = json.loads(Path(sp).read_text())["active_cache_version"]
+            fp = hf_hub_download(self.repo_id, f"versions/{cv}/aux_signal_matrix.parquet",
                                  repo_type="dataset", token=self.token)
             return pd.read_parquet(fp)
         except (EntryNotFoundError, Exception):  # noqa: BLE001

@@ -46,27 +46,27 @@ def _aux_df():
 
 def test_renders_axes_and_reading():
     md = render_today_markdown(_dq(), _aux_df())
-    assert "3축 중 2축" in md
-    assert "변동성·신용 동반" in md
+    assert "3개 영역 중 2개" in md
+    assert "주식시장과 회사채가 함께 움직임" in md
     assert "장기금리 상승·단기금리 하락" in md
     assert "10Y Real 상승" in md
 
 
 def test_aux_directions_shown():
     md = render_today_markdown(_dq(), _aux_df())
-    assert "10년 기대인플레이션" in md and "상승" in md
-    assert "판정불가" in md  # term premium
+    assert "채권시장이 보는 10년 물가 예상" in md and "오르는 중" in md
+    assert "확인 불가" in md  # 장기채 추가보상
 
 
 def test_no_reading_message():
     md = render_today_markdown(_dq(with_reading=False), _aux_df())
-    assert "뚜렷하게 관찰된 것이 없습니다" in md
+    assert "따로 설명할 만한 패턴이 잡히지 않았습니다" in md
 
 
 def test_empty_dq_shows_placeholder():
     md = render_today_markdown({}, pd.DataFrame())
-    assert "축 조망 데이터가 아직 없습니다" in md
-    assert "보조지표 데이터가 아직 없습니다" in md
+    assert "여러 지표를 같이 본 결과를 계산할 수 없습니다" in md
+    assert "확인 지표 데이터가 없습니다" in md
 
 
 def test_no_directive_language():
@@ -78,4 +78,4 @@ def test_no_directive_language():
 
 def test_disclaimer_present():
     md = render_today_markdown(_dq(), _aux_df())
-    assert "매수·매도" in md and "제공하지 않습니다" in md
+    assert "매수·매도" in md and "제시하지 않습니다" in md

@@ -109,7 +109,7 @@ def test_composite_counts_changed_axes():
     assert cv.changed_count == 2
     assert set(cv.changed_axes) == {"변동성·신용", "금리 방향"}
     assert cv.base_axes == ["경기 사이클"]
-    assert cv.summary_line() == "현재 3축 중 2축에서 기준상 변화"
+    assert cv.summary_line() == "현재 3개 영역 중 2개에서 눈에 띄는 움직임"
 
 
 def test_composite_all_base():

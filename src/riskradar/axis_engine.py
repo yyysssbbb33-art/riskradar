@@ -106,23 +106,23 @@ def vol_credit_axis(frames: dict[str, pd.DataFrame], cfg: AxisCfg = AXIS) -> Vol
     hy_state = hf["state_code"].iloc[-1] if hf is not None and len(hf) else "calm"
 
     if vix_active and hy_active:
-        state, label = "D", "변동성·신용 동반"
-        note = "VIX와 HY OAS 모두 기준상 변화 상태입니다."
+        state, label = "D", "주식시장과 회사채가 함께 움직임"
+        note = "주식시장이 예상하는 흔들림과 저신용 기업 회사채 추가금리가 모두 평소와 다른 움직임을 보입니다."
     elif vix_active:
-        state, label = "B", "변동성 선행"
-        note = "변화가 변동성 지표에서 먼저 나타나고 HY OAS는 기본 상태입니다."
+        state, label = "B", "주식시장이 먼저 움직임"
+        note = "주식시장이 예상하는 흔들림이 먼저 커졌고, 저신용 기업 회사채 추가금리는 아직 평소 범위입니다."
     elif hy_active:
         recent = vf["state_code"].iloc[-cfg.e_link_window:].tolist() if vf is not None else []
         had_vix = any(c in VIX_ACTIVE_STATES for c in recent)
         if had_vix:
-            state, label = "E", "변동성 진정·신용 변화 지속"
-            note = "최근 VIX 변화는 완화됐지만 HY OAS는 아직 변화 상태입니다."
+            state, label = "E", "주식시장은 진정 · 회사채 변화는 이어짐"
+            note = "최근 주식시장 흔들림은 줄었지만 저신용 기업 회사채 추가금리는 아직 평소와 다른 움직임을 보입니다."
         else:
-            state, label = "C", "신용 단독 변화"
-            note = "HY OAS의 변화가 VIX보다 더 뚜렷합니다."
+            state, label = "C", "회사채 쪽만 움직임"
+            note = "저신용 기업 회사채 추가금리의 움직임이 주식시장 예상 흔들림보다 더 뚜렷합니다."
     else:
-        state, label = "A", "뚜렷한 변화 없음"
-        note = "VIX와 HY OAS 모두 현재 기준상 기본 상태입니다."
+        state, label = "A", "큰 움직임 없음"
+        note = "주식시장이 예상하는 흔들림과 저신용 기업 회사채 추가금리 모두 큰 움직임이 없습니다."
 
     return VolCreditAxis(state, label, state != "A", vix_active, vreason,
                          vchange_pct, hy_active, vix_state, hy_state, note)
@@ -203,7 +203,7 @@ class CompositeView:
     disclaimer: str = field(default=DISCLAIMER)
 
     def summary_line(self) -> str:
-        return f"현재 3축 중 {self.changed_count}축에서 기준상 변화"
+        return f"현재 3개 영역 중 {self.changed_count}개에서 눈에 띄는 움직임"
 
     def to_dict(self) -> dict:
         return {

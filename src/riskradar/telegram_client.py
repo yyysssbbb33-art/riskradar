@@ -34,16 +34,17 @@ def send(text: str, token: str | None = None, chat_id: str | None = None) -> boo
 
 
 def _fmt_row(r: pd.Series) -> str:
-    from .formatting import fmt_value
-    from .display_text import core_name
+    from .formatting import fmt_change, fmt_pct, fmt_value
+    from .display_text import core_name, state_name
     val = fmt_value(r["latest_value"], r["value_unit"])
     tail = ""
     if pd.notna(r["percentile_10y"]):
-        tail = f" | 최근 10년 위치 {r['percentile_10y']:.0f}%"
+        tail = f" | 최근 10년 관측일의 {fmt_pct(r['percentile_10y'])}"
     elif pd.notna(r["change_60obs"]):
-        tail = f" | 약 3개월 변화 {r['change_60obs']:+.0f}bp"
-    drop = " ↓급락" if r["drop_flag"] else ""
-    return f"[{core_name(str(r['key']), short=True)}] {r['state_label']} | {val}{tail}{drop}"
+        tail = f" | 약 3개월 변화 {fmt_change(r['change_60obs'], r['change_unit'])}"
+    state = state_name(str(r.get("state_code", "")), str(r.get("state_label", "")),
+                       drop=bool(r.get("drop_flag", False)), key=str(r.get("key", "")))
+    return f"[{core_name(str(r['key']), short=True)}] {state} | {val}{tail}"
 
 
 def build_success(batch_kst: str, cache_version: str, matrix: pd.DataFrame,

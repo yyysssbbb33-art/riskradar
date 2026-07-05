@@ -29,18 +29,18 @@ class AuxSeries:
 # 3개 모두 FRED. Term Premium은 ACM(NY Fed xls) 대신 Kim-Wright THREEFYTP10(FRED, 일별)로 통일.
 AUX_SERIES: dict[str, AuxSeries] = {
     "BREAKEVEN": AuxSeries(
-        "T10YIE", "BREAKEVEN", "10Y Breakeven",
-        "명목금리 변화에서 인플레이션 보상 방향 확인",
+        "T10YIE", "BREAKEVEN", "시장 기반 10년 물가전망",
+        "장기금리 변화에 물가 전망이 얼마나 함께 움직였는지 확인",
         "fred", 1.0, "%", 100.0, "bp",
     ),
     "IGOAS": AuxSeries(
-        "BAMLC0A0CM", "IGOAS", "IG OAS",
-        "HY만의 변화인지 투자등급까지 넓어진 변화인지 확인",
+        "BAMLC0A0CM", "IGOAS", "우량 회사채 추가금리",
+        "회사채 위험이 저신용 기업에만 있는지 더 넓게 퍼졌는지 확인",
         "fred", 100.0, "bp", 1.0, "bp",
     ),
     "TERMPREM": AuxSeries(
-        "THREEFYTP10", "TERMPREM", "10Y Term Premium (KW)",
-        "장기채 고유 위험보상·장기구간 요인 확인",
+        "THREEFYTP10", "TERMPREM", "장기채 추가보상",
+        "장기채를 오래 보유할 때 시장이 요구하는 추가 보상이 변했는지 확인",
         "fred", 1.0, "%", 100.0, "bp",
     ),
 }

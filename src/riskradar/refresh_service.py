@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -119,6 +120,9 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         aux_matrix = _aux_matrix(aux, now)
         aux_failed = [k for k in AC.AUX_ORDER
                       if k not in aux or not getattr(aux[k], "ok", False)]
+        # 보조지표 일시 실패 시 직전 성공값을 가져오되 최신성 표시는 다시 계산한다.
+        # 오래된 값은 해석 엔진이 자동으로 집계에서 제외한다.
+        aux_matrix = _carry_forward_aux(aux_matrix, store, now)
 
         # 3c) 3축 복합 조망 + 조건부 해석. 계산 실패는 전체를 깨지 않음.
         try:
@@ -127,8 +131,12 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                 str(r["key"]): str(r["staleness_label"])
                 for _, r in aux_matrix.iterrows()
             }
+            aux_for_reading = {
+                str(r["key"]): SimpleNamespace(direction=str(r["direction"]))
+                for _, r in aux_matrix.iterrows()
+            }
             readings = interpretation_engine.read_all(
-                out["frames"], aux, aux_status=aux_status
+                out["frames"], aux_for_reading, aux_status=aux_status
             )
             axes = composite.to_dict()
             reading_dicts = [r.to_dict() for r in readings]
@@ -152,6 +160,11 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                 "aux_directions": {k: getattr(aux.get(k), "direction", "판정불가")
                                    for k in AC.AUX_ORDER},
                 "aux_failed": aux_failed,
+                "aux_errors": {
+                    str(r["key"]): str(r.get("error", ""))
+                    for _, r in aux_matrix.iterrows()
+                    if str(r.get("fetch_status", "ok")) != "ok"
+                },
                 "axes": axes,
                 "readings": reading_dicts,
             },
@@ -211,7 +224,8 @@ def _aux_matrix(aux: dict, now: datetime) -> pd.DataFrame:
                 "latest_date": None, "change_1m": None,
                 "change_unit": spec.change_unit, "direction": "판정불가",
                 "pct_in_history": None, "n_obs": 0,
-                "stale_days": None, "staleness_label": "stale", "error": "missing",
+                "stale_days": None, "staleness_label": "stale",
+                "fetch_status": "failed", "error": "missing",
             })
             continue
         if a.latest_date:
@@ -226,9 +240,58 @@ def _aux_matrix(aux: dict, now: datetime) -> pd.DataFrame:
             "latest_date": a.latest_date, "change_1m": a.change_1m,
             "change_unit": spec.change_unit, "direction": a.direction,
             "pct_in_history": a.pct_in_history, "n_obs": a.n_obs,
-            "stale_days": sd, "staleness_label": slabel, "error": a.error,
+            "stale_days": sd, "staleness_label": slabel,
+            "fetch_status": "ok" if a.ok else "failed", "error": a.error,
         })
     return pd.DataFrame(rows)
+
+
+def _carry_forward_aux(current: pd.DataFrame, store, now: datetime) -> pd.DataFrame:
+    """실패한 보조지표는 직전 성공 행을 보존한다.
+
+    핵심 데이터처럼 raw 전체를 재계산하지는 못하지만, 원인 확인용 방향을 갑자기
+    '데이터 없음'으로 잃지 않게 한다. 최신성이 stale이면 해석 집계에서 제외된다.
+    """
+    getter = getattr(store, "last_good_aux", None)
+    if getter is None:
+        return current
+    try:
+        previous = getter()
+    except Exception:  # noqa: BLE001
+        return current
+    if previous is None or previous.empty:
+        return current
+
+    out = current.copy()
+    for key in AC.AUX_ORDER:
+        idx = out.index[out["key"] == key]
+        if len(idx) == 0:
+            continue
+        i = idx[0]
+        cur = out.loc[i]
+        missing = (not bool(cur.get("ok", False)) or
+                   cur.get("latest_value") is None or pd.isna(cur.get("latest_value")))
+        if not missing:
+            continue
+        prev = previous.loc[previous["key"] == key]
+        if prev.empty:
+            continue
+        pr = prev.iloc[-1].copy()
+        if pr.get("latest_value") is None or pd.isna(pr.get("latest_value")):
+            continue
+        current_error = cur.get("error")
+        for col in out.columns:
+            if col in pr.index:
+                out.at[i, col] = pr[col]
+        latest_date = pr.get("latest_date")
+        if latest_date:
+            sd = (now.date() - pd.to_datetime(latest_date).date()).days
+            out.at[i, "stale_days"] = sd
+            out.at[i, "staleness_label"] = T.staleness_label(sd)
+        out.at[i, "ok"] = False
+        out.at[i, "fetch_status"] = "carried_forward"
+        out.at[i, "error"] = current_error or "current fetch failed; using previous successful value"
+    return out
 
 
 def _n(x):

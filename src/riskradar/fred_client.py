@@ -10,6 +10,7 @@ from __future__ import annotations
 import concurrent.futures as cf
 import logging
 import os
+import time
 from dataclasses import dataclass
 
 import pandas as pd
@@ -31,27 +32,39 @@ class FetchResult:
 
 def fetch_fred_series(series_id: str, out_key: str, api_key: str,
                       timeout: float, start: str) -> FetchResult:
-    """저수준: FRED series_id 하나를 받아 (date, value_raw) DataFrame으로.
+    """FRED series 하나를 받아 (date, value_raw) DataFrame으로.
 
-    core/aux 공용. 호출측이 series_id와 결과 key를 직접 지정한다.
+    일시적인 429/5xx·네트워크 오류는 짧게 재시도한다. 한 번의 순간 오류 때문에
+    보조지표가 화면에서 사라지는 일을 줄이기 위한 운영 보완이다.
     """
-    try:
-        resp = requests.get(_BASE, params={
-            "series_id": series_id, "api_key": api_key, "file_type": "json",
-            "observation_start": start,
-        }, timeout=timeout)
-        resp.raise_for_status()
-        obs = resp.json().get("observations", [])
-        rows = [(o["date"], o["value"]) for o in obs if o.get("value") not in (".", "", None)]
-        if not rows:
-            return FetchResult(out_key, False, None, "empty observations")
-        df = pd.DataFrame(rows, columns=["date", "value_raw"])
-        df["date"] = pd.to_datetime(df["date"])
-        df["value_raw"] = df["value_raw"].astype(float)
-        return FetchResult(out_key, True, df.sort_values("date").reset_index(drop=True))
-    except Exception as e:  # noqa: BLE001 - 부분 실패로 흡수
-        log.warning("FRED fetch failed for %s: %s", series_id, e)
-        return FetchResult(out_key, False, None, f"{type(e).__name__}: {e}")
+    max_retries = max(0, int(os.environ.get("FRED_MAX_RETRIES", "2")))
+    last_error: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.get(_BASE, params={
+                "series_id": series_id, "api_key": api_key, "file_type": "json",
+                "observation_start": start,
+            }, timeout=timeout)
+            if resp.status_code == 429 or 500 <= resp.status_code < 600:
+                resp.raise_for_status()
+            resp.raise_for_status()
+            obs = resp.json().get("observations", [])
+            rows = [(o["date"], o["value"]) for o in obs if o.get("value") not in (".", "", None)]
+            if not rows:
+                return FetchResult(out_key, False, None, "empty observations")
+            df = pd.DataFrame(rows, columns=["date", "value_raw"])
+            df["date"] = pd.to_datetime(df["date"])
+            df["value_raw"] = df["value_raw"].astype(float)
+            return FetchResult(out_key, True, df.sort_values("date").reset_index(drop=True))
+        except Exception as e:  # noqa: BLE001 - 부분 실패로 흡수
+            last_error = e
+            if attempt < max_retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            log.warning("FRED fetch failed for %s after %s attempts: %s",
+                        series_id, max_retries + 1, e)
+    return FetchResult(out_key, False, None,
+                       f"{type(last_error).__name__}: {last_error}")
 
 
 def _fetch_one(key: str, api_key: str, timeout: float, start: str) -> FetchResult:

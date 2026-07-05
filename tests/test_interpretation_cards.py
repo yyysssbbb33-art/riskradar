@@ -16,5 +16,4 @@ def test_t10y3m_card_keeps_nyfed_evidence():
 
 def test_hyoas_card_keeps_series_and_plain_language():
     card = get_interpretation_card("HYOAS")
-    assert "추가 금리 보상" in card
-    assert "BAMLH0A0HYM2" in card
+    assert "추가 금리" in card

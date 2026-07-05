@@ -19,7 +19,7 @@ def test_fallback_builds_axes_from_old_cache_without_axes_or_readings():
     out = pipeline.compute_all(make_raw_by_key())
     dq = _today_context_with_fallback({}, {"chart_data": out["chart_data"]}, _aux_df())
     assert dq.get("axes")
-    assert dq["axes"]["summary_line"].startswith("현재 3축 중")
+    assert dq["axes"]["summary_line"].startswith("현재 3개 영역 중")
     assert "readings" in dq
 
 

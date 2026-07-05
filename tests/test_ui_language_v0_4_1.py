@@ -11,8 +11,8 @@ def test_user_tables_use_plain_korean_labels():
         cols = set(df.columns)
         assert "약 1개월 변화" in cols
         assert "약 3개월 변화" in cols
-        assert "최근 5년 위치" in cols
-        assert "최근 10년 위치" in cols
+        assert "최근 5년 중 현재 위치" in cols
+        assert "최근 10년 중 현재 위치" in cols
         assert "20obs" not in cols
         assert "60obs" not in cols
         assert "5Y%" not in cols
