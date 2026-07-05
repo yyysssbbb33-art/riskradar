@@ -24,8 +24,7 @@ def healthz():
 @app.get("/api/status")
 def status():
     try:
-        st, _ = cache_store.get_store().load()
-        return st
+        return cache_store.get_store().load_status()
     except Exception as e:  # noqa: BLE001
         return {"status": "no_cache", "error": str(e)}
 

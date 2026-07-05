@@ -1,3 +1,15 @@
+## 0.4.9
+
+- HF Space UI가 프로세스 시작 시 한 번 읽은 캐시를 계속 보여주던 구조를 수정. 브라우저 page load와 수동 `HF Dataset 최신 데이터 다시 읽기` 버튼에서 최신 활성 캐시를 다시 조회.
+- 핵심 parquet를 읽은 뒤 `data_quality.json`이 포인터를 재조회하던 문제를 수정. 모든 부속 파일을 최초 `active_cache_version`에 고정해 같은 배치 버전만 사용.
+- HF `load_data_quality()`가 모든 예외를 빈 딕셔너리로 숨기던 문제를 수정. 파일이 실제로 없는 구버전만 `{}`로 처리하고 네트워크·다운로드 오류는 UI 진단에 노출.
+- UI fallback으로 재계산한 axes/readings와 실제 저장된 `data_quality.json`을 분리해 원본 상태 정보가 저장 내용을 정확히 보여주도록 수정.
+- Telegram 결과 반영을 위해 같은 cache_version의 parquet 전체를 두 번 업로드하던 구조를 제거하고 status 파일만 best-effort 갱신.
+- `data_quality.aux_directions`를 현재 수집 결과가 아니라 carry-forward까지 반영해 실제 해석에 사용한 방향과 일치시킴.
+- `/api/status`가 전체 parquet를 읽지 않고 `data_status.json`만 읽도록 경량화.
+- 보조지표 모듈 상단의 고정 `v0.4.0` 설명문을 제거해 실제 제품 버전과 혼동 방지.
+- 런타임 재조회, 동일 버전 고정, 메타데이터 오류 오진 방지, status-only 갱신, Space 재시작 없는 최신 버전 반영을 검증하는 회귀 테스트 추가.
+
 ## 0.4.8
 
 - `데이터 상태`의 `마지막 데이터 생성 코드 버전: 기록 없음`을 `활성 데이터는 있으나 생성 코드 버전이 기록되지 않은 구버전 데이터`로 구분해 표시.

@@ -159,9 +159,17 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                 "synced_staleness_label": T.staleness_label(
                     snap["synced_staleness_days"]),
                 "row_counts": {k: int(len(v)) for k, v in raw_by_key.items()},
-                "aux_directions": {k: getattr(aux.get(k), "direction", "판정불가")
-                                   for k in AC.AUX_ORDER},
+                # 실제 해석에 사용한 방향을 기록한다. 현재 수집 실패 후 과거값을
+                # 이어 쓴 경우에도 aux_signal_matrix와 같은 방향을 보여준다.
+                "aux_directions": {
+                    str(r["key"]): str(r["direction"])
+                    for _, r in aux_matrix.iterrows()
+                },
                 "aux_failed": aux_failed,
+                "aux_fetch_status": {
+                    str(r["key"]): str(r["fetch_status"])
+                    for _, r in aux_matrix.iterrows()
+                },
                 "aux_errors": {
                     str(r["key"]): str(r.get("error", ""))
                     for _, r in aux_matrix.iterrows()
@@ -185,6 +193,11 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             "latest_observation_dates": {
                 C.SERIES[k].series_id: pd.to_datetime(v["date"]).max().strftime("%Y-%m-%d")
                 for k, v in raw_by_key.items()},
+            "aux_failed": aux_failed,
+            "aux_fetch_status": {
+                str(r["key"]): str(r["fetch_status"])
+                for _, r in aux_matrix.iterrows()
+            },
             "telegram_sent": False,
         }
 
@@ -199,7 +212,13 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                    tg.build_success(batch, cache_version, matrix, snap, stale))
             sent = tg.send(msg)
             status["telegram_sent"] = sent
-            store.publish(cache_version, artifacts, status)  # telegram_sent 반영
+            # parquet 전체를 다시 올리지 않는다. 상태 갱신 실패도 데이터 성공을 깨지 않는다.
+            updater = getattr(store, "update_status", None)
+            if updater is not None:
+                try:
+                    updater(cache_version, status)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("telegram status update failed: %s", e)
 
         log.info("refresh %s (%s)", status_str, cache_version)
         return status

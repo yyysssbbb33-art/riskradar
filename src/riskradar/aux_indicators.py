@@ -1,4 +1,4 @@
-"""RiskRadar v0.4.0 — 보조지표 수집 + 방향 판정.
+"""RiskRadar — 보조지표 수집 + 방향 판정.
 
 역할:
 - FRED에서 보조 3개(Breakeven / IG OAS / Term Premium)를 수집한다.

@@ -149,8 +149,19 @@ class LocalStore:
             json.dumps(status, ensure_ascii=False, indent=2))
         self._prune()
 
+    def update_status(self, cache_version: str, status: dict) -> None:
+        """산출물은 건드리지 않고 status와 활성 포인터만 갱신한다."""
+        vdir = self.root / "versions" / cache_version
+        (vdir / "status.json").write_text(
+            json.dumps(status, ensure_ascii=False, indent=2))
+        (self.root / "data_status.json").write_text(
+            json.dumps(status, ensure_ascii=False, indent=2))
+
+    def load_status(self) -> dict:
+        return json.loads((self.root / "data_status.json").read_text())
+
     def load(self) -> tuple[dict, dict]:
-        status = json.loads((self.root / "data_status.json").read_text())
+        status = self.load_status()
         vdir = self.root / "versions" / status["active_cache_version"]
         arts = {n: pd.read_parquet(vdir / f"{n}.parquet") for n in ARTIFACT_PARQUETS}
         return status, arts
@@ -259,11 +270,29 @@ class HfDatasetStore:
             repo_type="dataset", commit_message=f"activate {cache_version}")
         self._prune()
 
-    def load(self) -> tuple[dict, dict]:
+    def update_status(self, cache_version: str, status: dict) -> None:
+        """Telegram 결과처럼 작은 상태 변화만 갱신한다. parquet은 재업로드하지 않는다."""
+        payload = json.dumps(status, ensure_ascii=False, indent=2).encode()
+        self.api.upload_file(
+            path_or_fileobj=payload,
+            path_in_repo=f"versions/{cache_version}/status.json",
+            repo_id=self.repo_id, repo_type="dataset",
+            commit_message=f"status {cache_version}")
+        # 활성 포인터는 마지막에 갱신한다.
+        self.api.upload_file(
+            path_or_fileobj=payload, path_in_repo="data_status.json",
+            repo_id=self.repo_id, repo_type="dataset",
+            commit_message=f"status activate {cache_version}")
+
+    def load_status(self) -> dict:
         from huggingface_hub import hf_hub_download
         sp = hf_hub_download(self.repo_id, "data_status.json",
                              repo_type="dataset", token=self.token)
-        status = json.loads(Path(sp).read_text())
+        return json.loads(Path(sp).read_text())
+
+    def load(self) -> tuple[dict, dict]:
+        from huggingface_hub import hf_hub_download
+        status = self.load_status()
         cv = status["active_cache_version"]
         arts = {}
         for n in ARTIFACT_PARQUETS:
@@ -303,7 +332,8 @@ class HfDatasetStore:
             fp = hf_hub_download(self.repo_id, f"versions/{cache_version}/data_quality.json",
                                  repo_type="dataset", token=self.token)
             return json.loads(Path(fp).read_text())
-        except (EntryNotFoundError, Exception):  # noqa: BLE001
+        except EntryNotFoundError:
+            # v0.4 이전 캐시에는 파일이 없을 수 있다. 그 경우만 구버전으로 관용 처리한다.
             return {}
 
     def last_good_raw(self) -> pd.DataFrame | None:
@@ -316,7 +346,10 @@ class HfDatasetStore:
             fp = hf_hub_download(self.repo_id, f"versions/{cv}/raw_fred.parquet",
                                  repo_type="dataset", token=self.token)
             return pd.read_parquet(fp)
-        except (EntryNotFoundError, Exception):  # noqa: BLE001
+        except EntryNotFoundError:
+            return None
+        except Exception as e:  # noqa: BLE001
+            log.warning("last_good_raw read failed: %s", e)
             return None
 
     def last_good_aux(self) -> pd.DataFrame | None:
@@ -329,7 +362,10 @@ class HfDatasetStore:
             fp = hf_hub_download(self.repo_id, f"versions/{cv}/aux_signal_matrix.parquet",
                                  repo_type="dataset", token=self.token)
             return pd.read_parquet(fp)
-        except (EntryNotFoundError, Exception):  # noqa: BLE001
+        except EntryNotFoundError:
+            return None
+        except Exception as e:  # noqa: BLE001
+            log.warning("last_good_aux read failed: %s", e)
             return None
 
     def find_last_good_aux(self, key: str) -> pd.DataFrame | None:

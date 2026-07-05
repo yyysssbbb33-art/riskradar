@@ -22,6 +22,7 @@ from .indicator_detail_view import render_indicator_detail
 from .relationship_guide import RELATIONSHIP_GUIDE
 from .today_view import render_today_markdown
 from .monthly_view import reconstruct_history_from_chart_data, render_monthly_markdown
+from .dashboard_snapshot import DashboardSnapshot, load_dashboard_snapshot
 from .version import __version__
 
 KST = ZoneInfo(C.APP_TIMEZONE)
@@ -251,13 +252,19 @@ def _history_plot_data(history: pd.DataFrame, key: str) -> pd.DataFrame:
     return d[["날짜", "최신값"]].sort_values("날짜")
 
 
-def _chart(arts: dict, key: str):
-    c = arts["chart_data"]
+def _chart_data(arts: dict, key: str) -> pd.DataFrame:
+    c = arts.get("chart_data", pd.DataFrame())
+    if c is None or c.empty or "key" not in c.columns:
+        return pd.DataFrame(columns=["날짜", "값"])
     d = c[c["key"] == key][["date", "value"]].copy()
-    d["날짜"] = pd.to_datetime(d["date"])
-    d["값"] = d["value"]
+    d["날짜"] = pd.to_datetime(d["date"], errors="coerce")
+    d["값"] = pd.to_numeric(d["value"], errors="coerce")
+    return d[["날짜", "값"]].dropna().sort_values("날짜")
+
+
+def _chart(arts: dict, key: str):
     return gr.LinePlot(
-        value=d[["날짜", "값"]], x="날짜", y="값",
+        value=_chart_data(arts, key), x="날짜", y="값",
         title=f"{core_name(key)} 원자료 흐름",
     )
 
@@ -383,42 +390,107 @@ def _data_generation_info(status: dict | None, data_quality: dict | None) -> dic
     }
 
 
+def _data_status_summary(snapshot: DashboardSnapshot, store) -> tuple[str, str]:
+    generation = _data_generation_info(snapshot.status, snapshot.data_quality)
+    dataset_name = str(getattr(store, "repo_id", "로컬 저장소"))
+    summary = (
+        f"- **현재 화면 코드 버전:** `{__version__}`\n"
+        f"- **활성 데이터 버전:** `{generation['active_cache_version']}`\n"
+        f"- **마지막 데이터 생성 시각:** `{generation['generated_at']}`\n"
+        f"- **데이터 생성 코드 버전:** `{generation['code_version']}`\n"
+        f"- **읽고 있는 데이터 저장소:** `{dataset_name}`\n"
+        f"- **이 화면이 Dataset을 다시 읽은 시각:** `{snapshot.loaded_at_kst}`"
+    )
+
+    warnings: list[str] = []
+    if snapshot.load_errors:
+        warnings.append(
+            "⚠️ **일부 부속 데이터를 읽는 과정에서 오류가 있었습니다.**  "
+            + "  \n".join(f"- `{e}`" for e in snapshot.load_errors)
+        )
+    data_quality_failed = any(e.startswith("data_quality.json 읽기 실패") for e in snapshot.load_errors)
+    if generation["code_version_missing"] == "yes" and not data_quality_failed:
+        warnings.append(
+            "⚠️ **활성 데이터는 존재하지만 생성 코드 버전이 기록돼 있지 않습니다.** "
+            "구버전 캐시일 수 있습니다. 최신 배치를 실행한 직후에도 이 문구가 남는다면, "
+            "아래의 `이 화면이 Dataset을 다시 읽은 시각`과 활성 데이터 버전이 실제로 갱신됐는지 먼저 확인하세요."
+        )
+    elif generation["code_version_missing"] == "no" and generation["code_version"] != __version__:
+        warnings.append(
+            "⚠️ 화면 코드와 마지막 배치 코드 버전이 다릅니다. "
+            "GitHub 배치가 최신 코드를 실행하는지 확인하세요."
+        )
+    return summary, "\n\n".join(warnings)
+
+
+def _loaded_banner(snapshot: DashboardSnapshot) -> str:
+    active = snapshot.status.get("active_cache_version", "확인 불가")
+    return (
+        f"**현재 화면이 읽고 있는 데이터:** `{active}`  ·  "
+        f"**Dataset 재조회 시각:** `{snapshot.loaded_at_kst}`\n\n"
+        "아래 버튼은 FRED 수집을 실행하지 않고, **HF Dataset의 최신 활성 캐시를 다시 읽습니다.**"
+    )
+
+
+def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> dict:
+    arts = snapshot.arts
+    aux_df = snapshot.aux_df
+    frames = _frames_from_chart_data(arts.get("chart_data", pd.DataFrame()))
+    # 저장된 원본 metadata와 UI fallback 결과를 분리한다.
+    effective_dq = _today_context_with_fallback(snapshot.data_quality, arts, aux_df)
+    today_md = render_today_markdown(effective_dq, aux_df)
+    monthly_md = render_monthly_markdown(snapshot.history, aux_df)
+    details = {
+        key: plain_language(render_indicator_detail(
+            arts["signal_matrix"].loc[arts["signal_matrix"]["key"].astype(str) == key].iloc[-1],
+            effective_dq,
+            _one_line_interpretation(
+                arts["signal_matrix"].loc[arts["signal_matrix"]["key"].astype(str) == key].iloc[-1]
+            ),
+            frames=frames,
+            aux_df=aux_df,
+            matrix=arts["signal_matrix"],
+        ))
+        for key in C.SERIES_ORDER
+        if not arts["signal_matrix"].loc[arts["signal_matrix"]["key"].astype(str) == key].empty
+    }
+    summary_md, warning_md = _data_status_summary(snapshot, store)
+    history_source_md = f"**현재 30일 데이터 기준:** {snapshot.history_source}"
+    if snapshot.history_error:
+        history_source_md += f"\n\n⚠️ {snapshot.history_error}"
+    return {
+        "banner": _loaded_banner(snapshot),
+        "board": _board_df(arts["signal_matrix"]),
+        "details": details,
+        "today": today_md,
+        "history_source": history_source_md,
+        "monthly": monthly_md,
+        "history": snapshot.history,
+        "history_plot": _history_plot_data(snapshot.history, selected_key),
+        "history_table": _history_table(snapshot.history, selected_key),
+        "synced": _synced_df(arts),
+        "matrix": _signal_matrix_df(arts["signal_matrix"]),
+        "charts": {key: _chart_data(arts, key) for key in C.SERIES_ORDER},
+        "status_summary": summary_md,
+        "status_warning": warning_md,
+        "aux_status": _aux_status_df(aux_df),
+        "status_json": snapshot.status,
+        "data_quality_json": snapshot.data_quality,
+    }
+
+
 def build_app():
     store = cache_store.get_store()
     try:
-        status, arts = store.load()
+        snapshot = load_dashboard_snapshot(store)
     except Exception as e:
         with gr.Blocks(title="RiskRadar") as demo:
             gr.Markdown(f"# RiskRadar\n\n저장된 데이터를 아직 읽을 수 없습니다: `{e}`")
         return demo
 
-    # 지난 30일은 최신 chart_data의 과거 관측 시계열로 우선 재구성한다.
-    # 저장 스냅샷은 chart_data가 없는 구버전 캐시에서만 fallback으로 쓴다.
-    history = reconstruct_history_from_chart_data(arts.get("chart_data", pd.DataFrame()), days=30)
-    history_source = "과거 원자료 재구성" if not history.empty else "저장 스냅샷"
-    history_error = None
-    if history.empty:
-        try:
-            history = store.load_history(days=30)
-        except Exception as e:
-            history = pd.DataFrame()
-            history_error = f"지난 30일 기록을 읽을 수 없습니다: {type(e).__name__}: {e}"
-
-    try:
-        data_quality = store.load_data_quality()
-    except Exception:
-        data_quality = {}
-    try:
-        aux_df = store.load_artifact(status["active_cache_version"], "aux_signal_matrix")
-    except Exception:
-        aux_df = pd.DataFrame()
-
-    frames = _frames_from_chart_data(arts.get("chart_data", pd.DataFrame()))
-    data_quality = _today_context_with_fallback(data_quality, arts, aux_df)
-    today_md = render_today_markdown(data_quality, aux_df)
-    monthly_md = render_monthly_markdown(history, aux_df)
     default_key = "HYOAS" if "HYOAS" in C.SERIES_ORDER else C.SERIES_ORDER[0]
     choices = [(core_name(k), k) for k in C.SERIES_ORDER]
+    initial = _dynamic_payload(snapshot, default_key, store)
 
     with gr.Blocks(title="RiskRadar") as demo:
         gr.Markdown("# RiskRadar — 미국 시장 흐름 신호판")
@@ -426,104 +498,84 @@ def build_app():
             "6개 핵심 지표와 3개 보조 지표를 함께 읽어, 지금 어떤 부분이 움직이고 다음에 무엇을 확인할지 보여주는 읽기 전용 대시보드입니다. "
             "단일 위험점수나 매매 신호는 만들지 않습니다."
         )
+        loaded_banner = gr.Markdown(initial["banner"])
+        reload_button = gr.Button("HF Dataset 최신 데이터 다시 읽기", variant="secondary")
 
         with gr.Tab("현재 상황"):
             gr.Markdown(BOARD_HELP)
             with gr.Accordion("용어가 어렵다면 먼저 보기", open=False):
                 gr.Markdown(EASY_GLOSSARY)
-            gr.Dataframe(_board_df(arts["signal_matrix"]), wrap=True, interactive=False)
+            board_component = gr.Dataframe(initial["board"], wrap=True, interactive=False)
 
             gr.Markdown("## 지표별 상세 설명")
             gr.Markdown(
                 "궁금한 지표를 펼치면 **현재 데이터와 연결한 해석 → 현재 연결된 조합 → 8칸 상세 설명** 순서로 볼 수 있습니다."
             )
-            matrix_by_key = {str(r["key"]): r for _, r in arts["signal_matrix"].iterrows()}
+            detail_components = {}
             for key in C.SERIES_ORDER:
-                row = matrix_by_key.get(key)
-                if row is None:
-                    continue
                 with gr.Accordion(f"{core_name(key)} 상세 설명 보기", open=False):
-                    gr.Markdown(
-                        plain_language(render_indicator_detail(
-                            row,
-                            data_quality,
-                            _one_line_interpretation(row),
-                            frames=frames,
-                            aux_df=aux_df,
-                            matrix=arts["signal_matrix"],
-                        ))
-                    )
+                    detail_components[key] = gr.Markdown(initial["details"].get(key, "현재 데이터를 읽을 수 없습니다."))
 
             with gr.Accordion("지표를 함께 본 해석 전체 보기", open=False):
-                gr.Markdown(today_md)
+                combined_today_component = gr.Markdown(initial["today"])
 
         with gr.Tab("오늘의 해석"):
-            gr.Markdown(today_md)
+            today_component = gr.Markdown(initial["today"])
 
         with gr.Tab("지난 30일 흐름"):
             gr.Markdown(HISTORY_HELP)
-            if history_error:
-                gr.Markdown(f"⚠️ {history_error}")
-            gr.Markdown(f"**현재 30일 데이터 기준:** {history_source}")
-            gr.Markdown(monthly_md)
+            history_source_component = gr.Markdown(initial["history_source"])
+            monthly_component = gr.Markdown(initial["monthly"])
             gr.Markdown("---\n\n## 지표별 30일 흐름")
             selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
+            history_state = gr.State(initial["history"])
             interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
             hist_plot = gr.LinePlot(
-                value=_history_plot_data(history, default_key),
-                x="날짜", y="최신값",
+                value=initial["history_plot"], x="날짜", y="최신값",
                 title="선택 지표의 지난 30일 값 변화",
             )
-            hist_table = gr.Dataframe(_history_table(history, default_key), wrap=True, interactive=False)
-            selector.change(
-                fn=lambda key: (
+            hist_table = gr.Dataframe(initial["history_table"], wrap=True, interactive=False)
+
+            def _history_selection(key, history):
+                history = history if isinstance(history, pd.DataFrame) else pd.DataFrame(history or [])
+                return (
                     plain_language(get_interpretation_card(key)),
                     _history_plot_data(history, key),
                     _history_table(history, key),
-                ),
-                inputs=selector,
+                )
+
+            selector.change(
+                fn=_history_selection,
+                inputs=[selector, history_state],
                 outputs=[interpretation_card, hist_plot, hist_table],
             )
 
         with gr.Tab("같은 날짜 비교"):
             gr.Markdown(SYNCED_HELP)
-            gr.Dataframe(_synced_df(arts), interactive=False)
+            synced_component = gr.Dataframe(initial["synced"], interactive=False)
 
         with gr.Tab("전체 지표 비교"):
             gr.Markdown(SIGNAL_MATRIX_HELP)
-            gr.Dataframe(_signal_matrix_df(arts["signal_matrix"]), wrap=True, interactive=False)
+            matrix_component = gr.Dataframe(initial["matrix"], wrap=True, interactive=False)
 
+        chart_components = {}
         with gr.Tab("차트"):
             gr.Markdown(CHART_HELP)
             for key in C.SERIES_ORDER:
-                _chart(arts, key)
+                chart_components[key] = gr.LinePlot(
+                    value=initial["charts"][key], x="날짜", y="값",
+                    title=f"{core_name(key)} 원자료 흐름",
+                )
 
         with gr.Tab("데이터 상태"):
             gr.Markdown("### 데이터 상태\n\n데이터 버전, 마지막 갱신 시각, 보조지표 수집 실패와 과거값 사용 여부를 확인하는 운영 점검용 정보입니다.")
-            generation = _data_generation_info(status, data_quality)
-            data_code_version = generation["code_version"]
-            dataset_name = str(getattr(store, "repo_id", "로컬 저장소"))
-            gr.Markdown(
-                f"- **현재 화면 코드 버전:** `{__version__}`\n"
-                f"- **활성 데이터 버전:** `{generation['active_cache_version']}`\n"
-                f"- **마지막 데이터 생성 시각:** `{generation['generated_at']}`\n"
-                f"- **데이터 생성 코드 버전:** `{data_code_version}`\n"
-                f"- **읽고 있는 데이터 저장소:** `{dataset_name}`"
-            )
-            if generation["code_version_missing"] == "yes":
-                gr.Markdown(
-                    "⚠️ **활성 데이터는 존재하지만 생성 코드 버전이 기록돼 있지 않습니다.** "
-                    "즉 데이터 자체가 없는 것은 아니고, 구버전 배치가 만든 캐시이거나 최신 GitHub 배치가 현재 데이터 저장소에 아직 발행되지 않은 상태입니다. "
-                    "v0.4.7 이상 배치가 새 캐시를 정상 발행하면 이 항목에는 반드시 버전이 기록됩니다. "
-                    "HF 화면 코드는 FRED를 직접 수집하지 않으므로, 보조지표가 비어 있다면 GitHub 배치 쪽 최신 코드와 실제 발행 대상 저장소를 먼저 확인해야 합니다."
-                )
-            elif data_code_version != __version__:
-                gr.Markdown("⚠️ 화면 코드와 마지막 배치 코드 버전이 다릅니다. 보조지표가 계속 비어 있다면 GitHub 배치가 최신 코드를 실행하는지 먼저 확인하세요.")
+            status_summary_component = gr.Markdown(initial["status_summary"])
+            status_warning_component = gr.Markdown(initial["status_warning"])
             gr.Markdown("#### 보조지표 수집 상태")
-            gr.Dataframe(_aux_status_df(aux_df), wrap=True, interactive=False)
+            aux_status_component = gr.Dataframe(initial["aux_status"], wrap=True, interactive=False)
             with gr.Accordion("원본 상태 정보 보기", open=False):
-                gr.JSON(status)
-                gr.JSON(data_quality)
+                status_json_component = gr.JSON(initial["status_json"])
+                data_quality_json_component = gr.JSON(initial["data_quality_json"])
 
         with gr.Tab("지표 설명"):
             gr.Markdown(GUIDE_INTRO)
@@ -531,5 +583,55 @@ def build_app():
             guide_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
             guide_selector.change(fn=lambda key: plain_language(get_interpretation_card(key)), inputs=guide_selector, outputs=guide_card)
             gr.Markdown(plain_language(RELATIONSHIP_GUIDE))
+
+        reload_outputs = [
+            loaded_banner,
+            board_component,
+            *[detail_components[k] for k in C.SERIES_ORDER],
+            combined_today_component,
+            today_component,
+            history_source_component,
+            monthly_component,
+            history_state,
+            hist_plot,
+            hist_table,
+            synced_component,
+            matrix_component,
+            *[chart_components[k] for k in C.SERIES_ORDER],
+            status_summary_component,
+            status_warning_component,
+            aux_status_component,
+            status_json_component,
+            data_quality_json_component,
+        ]
+
+        def _reload_latest(selected_key):
+            snap = load_dashboard_snapshot(store)
+            payload = _dynamic_payload(snap, selected_key or default_key, store)
+            return (
+                payload["banner"],
+                payload["board"],
+                *[payload["details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in C.SERIES_ORDER],
+                payload["today"],
+                payload["today"],
+                payload["history_source"],
+                payload["monthly"],
+                payload["history"],
+                payload["history_plot"],
+                payload["history_table"],
+                payload["synced"],
+                payload["matrix"],
+                *[payload["charts"][k] for k in C.SERIES_ORDER],
+                payload["status_summary"],
+                payload["status_warning"],
+                payload["aux_status"],
+                payload["status_json"],
+                payload["data_quality_json"],
+            )
+
+        # Space 프로세스 시작 시 한 번 읽고 고정하지 않는다.
+        # 브라우저가 페이지를 열 때마다, 그리고 사용자가 버튼을 누를 때마다 최신 포인터를 다시 읽는다.
+        demo.load(fn=_reload_latest, inputs=[selector], outputs=reload_outputs, queue=False)
+        reload_button.click(fn=_reload_latest, inputs=[selector], outputs=reload_outputs, queue=False)
 
     return demo
