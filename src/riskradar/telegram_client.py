@@ -35,14 +35,15 @@ def send(text: str, token: str | None = None, chat_id: str | None = None) -> boo
 
 def _fmt_row(r: pd.Series) -> str:
     from .formatting import fmt_value
+    from .display_text import core_name
     val = fmt_value(r["latest_value"], r["value_unit"])
     tail = ""
     if pd.notna(r["percentile_10y"]):
-        tail = f" | 10Y pct {r['percentile_10y']:.0f}%"
+        tail = f" | 최근 10년 위치 {r['percentile_10y']:.0f}%"
     elif pd.notna(r["change_60obs"]):
-        tail = f" | 60obs {r['change_60obs']:+.0f}bp"
+        tail = f" | 약 3개월 변화 {r['change_60obs']:+.0f}bp"
     drop = " ↓급락" if r["drop_flag"] else ""
-    return f"[{r['display_name']}] {r['state_label']} | {val}{tail}{drop}"
+    return f"[{core_name(str(r['key']), short=True)}] {r['state_label']} | {val}{tail}{drop}"
 
 
 def build_success(batch_kst: str, cache_version: str, matrix: pd.DataFrame,
@@ -50,8 +51,8 @@ def build_success(batch_kst: str, cache_version: str, matrix: pd.DataFrame,
     lines = ["✅ RiskRadar 업데이트 완료", "",
              f"기준: {batch_kst}", f"캐시: {cache_version}", ""]
     lines += [_fmt_row(r) for _, r in matrix.iterrows()]
-    lines += ["", f"Synced date: {synced.get('synced_date')}"]
-    lines.append(f"Stale series: {', '.join(stale) if stale else 'none'}")
+    lines += ["", f"공통 기준일: {synced.get('synced_date')}"]
+    lines.append(f"지연 지표: {', '.join(stale) if stale else '없음'}")
     return "\n".join(lines)
 
 
@@ -59,11 +60,11 @@ def build_partial(cache_version: str, matrix: pd.DataFrame, synced: dict,
                   failed: list[str], stale: list[str]) -> str:
     lines = ["⚠️ RiskRadar 부분 업데이트", "",
              f"캐시: {cache_version}",
-             f"실패 fetch: {', '.join(failed)}",
-             "처리: 직전 성공 raw 유지, stale 표시", ""]
+             f"수집 실패: {', '.join(failed)}",
+             "처리: 직전 성공 원자료 유지, 지연 표시", ""]
     lines += [_fmt_row(r) for _, r in matrix.iterrows()]
-    lines += ["", f"Synced date: {synced.get('synced_date')}",
-              f"Stale series: {', '.join(stale)}"]
+    lines += ["", f"공통 기준일: {synced.get('synced_date')}",
+              f"지연 지표: {', '.join(stale)}"]
     return "\n".join(lines)
 
 

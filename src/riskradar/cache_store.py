@@ -88,6 +88,17 @@ def _history_from_versions(loader, versions: list[str], days: int = 30) -> pd.Da
     if not rows:
         return pd.DataFrame()
     hist = pd.concat(rows, ignore_index=True)
+    # 같은 KST 날짜에 자동·수동 실행이 여러 번 있었으면 원본 버전은 모두 보존하되
+    # UI 히스토리에는 그날의 마지막 성공 스냅샷 하나만 사용한다.
+    latest_by_date = (
+        hist[["snapshot_date", "snapshot_at_kst", "cache_version"]]
+        .drop_duplicates()
+        .sort_values("snapshot_at_kst")
+        .groupby("snapshot_date", as_index=False)
+        .tail(1)
+    )
+    keep_versions = set(latest_by_date["cache_version"].tolist())
+    hist = hist.loc[hist["cache_version"].isin(keep_versions)].copy()
     return hist.sort_values(["snapshot_at_kst", "key"]).reset_index(drop=True)
 
 

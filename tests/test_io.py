@@ -108,3 +108,21 @@ def test_load_30d_history_from_versions(tmp_path):
     assert set(hist["key"]) == set(rb.keys())
     assert status["active_cache_version"] in set(hist["cache_version"])
     assert {"snapshot_date", "latest_value", "state_label"}.issubset(hist.columns)
+
+
+def test_history_keeps_last_snapshot_per_day():
+    versions = ["2026-07-01T08-30-00KST", "2026-07-01T10-00-00KST", "2026-07-02T08-30-00KST"]
+
+    def loader(version, name):
+        assert name == "signal_matrix"
+        return pd.DataFrame([{
+            "key": "VIX", "display_name": "VIX", "latest_value": 10.0,
+            "value_unit": "index", "change_20obs": 1.0, "change_60obs": 2.0,
+            "change_unit": "pt", "percentile_5y": 50.0, "percentile_10y": 50.0,
+            "state_label": "평온", "state_reason": version, "drop_flag": False,
+        }])
+
+    hist = CS._history_from_versions(loader, versions, days=3650)
+    july1 = hist.loc[hist["snapshot_date"] == "2026-07-01"]
+    assert len(july1) == 1
+    assert july1.iloc[0]["cache_version"] == "2026-07-01T10-00-00KST"

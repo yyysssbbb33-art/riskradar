@@ -54,7 +54,7 @@ def test_renders_axes_and_reading():
 
 def test_aux_directions_shown():
     md = render_today_markdown(_dq(), _aux_df())
-    assert "10Y Breakeven" in md and "상승" in md
+    assert "10년 기대인플레이션" in md and "상승" in md
     assert "판정불가" in md  # term premium
 
 

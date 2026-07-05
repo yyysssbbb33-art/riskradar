@@ -116,3 +116,23 @@ def test_no_directive_language():
                         + [c.text for c in r.checks])
         for w in banned:
             assert w not in blob, f"directive word '{w}' in {r.combo_id}"
+
+
+def test_weakened_explanation_is_structured():
+    f = _30up_2down()
+    readings = IE.read_all(f, _aux(BREAKEVEN="하락", IGOAS="보합", TERMPREM="보합"))
+    r = next(x for x in readings if x.combo_id == "rates_30up_2down")
+    assert "infl" in r.weakened_ids
+
+
+def test_stale_aux_is_excluded_from_support():
+    f = _30up_2down()
+    readings = IE.read_all(
+        f,
+        _aux(BREAKEVEN="상승", IGOAS="보합", TERMPREM="보합"),
+        aux_status={"BREAKEVEN": "stale", "IGOAS": "normal", "TERMPREM": "normal"},
+    )
+    r = next(x for x in readings if x.combo_id == "rates_30up_2down")
+    be = next(c for c in r.checks if c.key == "BREAKEVEN")
+    assert be.direction == "판정불가"
+    assert "infl" not in r.supported_ids

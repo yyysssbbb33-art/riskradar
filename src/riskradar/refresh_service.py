@@ -123,7 +123,13 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         # 3c) 3축 복합 조망 + 조건부 해석. 계산 실패는 전체를 깨지 않음.
         try:
             composite = axis_engine.composite_view(out["frames"])
-            readings = interpretation_engine.read_all(out["frames"], aux)
+            aux_status = {
+                str(r["key"]): str(r["staleness_label"])
+                for _, r in aux_matrix.iterrows()
+            }
+            readings = interpretation_engine.read_all(
+                out["frames"], aux, aux_status=aux_status
+            )
             axes = composite.to_dict()
             reading_dicts = [r.to_dict() for r in readings]
         except Exception as e:  # noqa: BLE001

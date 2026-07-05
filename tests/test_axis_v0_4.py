@@ -44,7 +44,7 @@ def test_vc_B_vix_leads_immediate():
 def test_vc_B_vix_persistent():
     f = _frames(VIX=_frame(["calm"] * 7 + ["watch", "calm", "watch", "calm", "watch"]))
     vc = AX.vol_credit_axis(f)
-    assert vc.state == "B" and vc.vix_active and vc.vix_reason == "persistent"
+    assert vc.state == "B" and vc.vix_active and vc.vix_reason.startswith("persistent")
 
 
 def test_vc_C_credit_only():
@@ -122,3 +122,19 @@ def test_composite_to_dict_has_no_score():
     for banned in ("score", "risk_level", "overall", "위험점수"):
         assert banned not in d
     assert "disclaimer" in d
+
+
+def test_vix_persistence_is_filtered_by_own_history_change_size():
+    n = 320
+    df = pd.DataFrame({
+        "date": pd.bdate_range("2020-01-01", periods=n),
+        "value": [20.0] * n,
+        "state_code": ["calm"] * (n - 5) + ["watch", "watch", "watch", "watch", "watch"],
+        "drop_flag": [False] * n,
+        # 과거 변화폭은 대부분 크고, 최신 변화는 매우 작아 자기 역사 대비 미미함
+        "change_20obs": [10.0] * (n - 1) + [0.1],
+    })
+    vc = AX.vol_credit_axis(_frames(VIX=df))
+    assert vc.state == "A"
+    assert not vc.vix_active
+    assert vc.vix_reason == "persistent_but_small_change"

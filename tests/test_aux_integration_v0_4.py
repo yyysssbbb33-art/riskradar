@@ -14,7 +14,7 @@ from riskradar import refresh_service as RS
 from riskradar import aux_config as AC
 from riskradar.aux_indicators import AuxDirection, DIRECTION_UP
 
-from synth import make_raw_by_key
+from tests.synth import make_raw_by_key
 
 
 def _core_fetcher(rb):

@@ -31,7 +31,9 @@ DIR_UP, DIR_DOWN, DIR_BASE = "상승", "하락", "기본"
 class AxisCfg:
     """3축 판정 C등급 운영 규칙."""
     vix_persist_window: int = 5   # 최근 N개 관측
-    vix_persist_min: int = 3      # 그 중 M개가 기본을 벗어나면 지속 활성
+    vix_persist_min: int = 3      # 그 중 M개가 기본을 벗어나면 지속 후보
+    vix_change_abs_pct: float = 40.0  # 약 1개월 변화가 자기 과거 변화폭의 이 위치 이상
+    vix_change_min_obs: int = 250
     e_link_window: int = 10       # '변동성 진정·신용 지속' 판정용 연결 창
 
 
@@ -49,7 +51,8 @@ class VolCreditAxis:
     label: str
     changed: bool
     vix_active: bool
-    vix_reason: str     # immediate | persistent | base
+    vix_reason: str     # immediate | persistent+history | persistent_but_small_change | base
+    vix_change_pct: float | None
     hy_active: bool
     vix_state: str
     hy_state: str
@@ -58,20 +61,35 @@ class VolCreditAxis:
     def to_dict(self) -> dict:
         return {k: getattr(self, k) for k in
                 ("state", "label", "changed", "vix_active", "vix_reason",
-                 "hy_active", "vix_state", "hy_state", "note")}
+                 "vix_change_pct", "hy_active", "vix_state", "hy_state", "note")}
 
 
-def _vix_active(frame: pd.DataFrame, cfg: AxisCfg) -> tuple[bool, str]:
+def _vix_change_is_meaningful(frame: pd.DataFrame, cfg: AxisCfg) -> tuple[bool, float | None]:
+    if "change_20obs" not in frame:
+        return True, None  # 짧은 합성 테스트·구버전 프레임은 기존 규칙 fallback
+    changes = pd.to_numeric(frame["change_20obs"], errors="coerce")
+    valid = changes.dropna()
+    latest = changes.iloc[-1] if len(changes) else float("nan")
+    if pd.isna(latest) or len(valid) < cfg.vix_change_min_obs:
+        return True, None
+    pct = float((valid.abs() <= abs(float(latest))).mean() * 100.0)
+    return pct >= cfg.vix_change_abs_pct, round(pct, 1)
+
+
+def _vix_active(frame: pd.DataFrame, cfg: AxisCfg) -> tuple[bool, str, float | None]:
     codes = frame["state_code"].tolist()
     if not codes:
-        return False, "base"
+        return False, "base", None
+    meaningful, pct = _vix_change_is_meaningful(frame, cfg)
     if codes[-1] == VIX_STRONG:
-        return True, "immediate"
+        return True, "immediate", pct
     window = codes[-cfg.vix_persist_window:]
     off_base = sum(1 for c in window if c in VIX_ACTIVE_STATES)
+    if off_base >= cfg.vix_persist_min and meaningful:
+        return True, "persistent+history", pct
     if off_base >= cfg.vix_persist_min:
-        return True, "persistent"
-    return False, "base"
+        return False, "persistent_but_small_change", pct
+    return False, "base", pct
 
 
 def _hy_active(frame: pd.DataFrame) -> bool:
@@ -81,7 +99,8 @@ def _hy_active(frame: pd.DataFrame) -> bool:
 
 def vol_credit_axis(frames: dict[str, pd.DataFrame], cfg: AxisCfg = AXIS) -> VolCreditAxis:
     vf, hf = frames.get("VIX"), frames.get("HYOAS")
-    vix_active, vreason = _vix_active(vf, cfg) if vf is not None else (False, "base")
+    vix_active, vreason, vchange_pct = (_vix_active(vf, cfg) if vf is not None
+                                         else (False, "base", None))
     hy_active = _hy_active(hf) if hf is not None else False
     vix_state = vf["state_code"].iloc[-1] if vf is not None and len(vf) else "calm"
     hy_state = hf["state_code"].iloc[-1] if hf is not None and len(hf) else "calm"
@@ -106,7 +125,7 @@ def vol_credit_axis(frames: dict[str, pd.DataFrame], cfg: AxisCfg = AXIS) -> Vol
         note = "VIX와 HY OAS 모두 현재 기준상 기본 상태입니다."
 
     return VolCreditAxis(state, label, state != "A", vix_active, vreason,
-                         hy_active, vix_state, hy_state, note)
+                         vchange_pct, hy_active, vix_state, hy_state, note)
 
 
 # ---- 경기 사이클 축 --------------------------------------------------------
