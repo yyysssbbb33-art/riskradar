@@ -16,6 +16,7 @@ from . import config as C
 from .display_text import LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y, core_name
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .interpretation_cards import get_interpretation_card
+from .indicator_detail_view import render_indicator_detail
 from .relationship_guide import RELATIONSHIP_GUIDE
 from .today_view import render_today_markdown
 
@@ -264,7 +265,26 @@ def build_app():
         with gr.Tab("현재 상황"):
             gr.Markdown(BOARD_HELP)
             gr.Dataframe(_board_df(arts["signal_matrix"]), wrap=True, interactive=False)
-            with gr.Accordion("현재 조합 해석 바로 보기", open=False):
+
+            gr.Markdown("## 지표별 상세 설명")
+            gr.Markdown(
+                "궁금한 지표를 펼치면 **현재 데이터와 연결한 해석 → 현재 연결된 조합 → 8칸 상세 설명** 순서로 볼 수 있습니다."
+            )
+            matrix_by_key = {str(r["key"]): r for _, r in arts["signal_matrix"].iterrows()}
+            for key in C.SERIES_ORDER:
+                row = matrix_by_key.get(key)
+                if row is None:
+                    continue
+                with gr.Accordion(f"{core_name(key)} 상세 설명 보기", open=False):
+                    gr.Markdown(
+                        render_indicator_detail(
+                            row,
+                            data_quality,
+                            _one_line_interpretation(row),
+                        )
+                    )
+
+            with gr.Accordion("현재 조합 해석 전체 보기", open=False):
                 gr.Markdown(today_md)
 
         with gr.Tab("오늘의 해석"):
