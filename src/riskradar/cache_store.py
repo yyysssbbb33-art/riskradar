@@ -55,6 +55,28 @@ def _safe_version_sort(cache_version: str):
         return datetime.min
 
 
+
+
+def _actual_success_aux_row(df: pd.DataFrame | None, key: str) -> pd.DataFrame:
+    """보조지표 캐시에서 '실제 정상 수집' 행만 반환한다.
+
+    carried_forward 행을 다시 성공값으로 취급하면 실패가 연쇄 복사될 수 있으므로
+    ``fetch_status == ok``인 행만 복구 원천으로 쓴다. 오래된 초기 캐시에
+    fetch_status 컬럼이 없으면 ``ok == True``인 행만 허용한다.
+    """
+    if df is None or df.empty or "key" not in df.columns:
+        return pd.DataFrame()
+    hit = df.loc[df["key"].astype(str) == str(key)].copy()
+    if hit.empty:
+        return hit
+    if "fetch_status" in hit.columns:
+        hit = hit.loc[hit["fetch_status"].astype(str) == "ok"]
+    elif "ok" in hit.columns:
+        hit = hit.loc[hit["ok"].astype(bool)]
+    if "latest_value" in hit.columns:
+        hit = hit.loc[pd.to_numeric(hit["latest_value"], errors="coerce").notna()]
+    return hit
+
 def _history_from_versions(loader, versions: list[str], days: int = 30) -> pd.DataFrame:
     """여러 version의 signal_matrix를 합쳐 UI용 일별 스냅샷 히스토리를 만든다."""
     if not versions:
@@ -177,6 +199,19 @@ class LocalStore:
         f = vdir / "aux_signal_matrix.parquet"
         return pd.read_parquet(f) if f.exists() else None
 
+    def find_last_good_aux(self, key: str) -> pd.DataFrame | None:
+        """과거 버전을 최신→과거 순서로 훑어 마지막 실제 성공 행을 찾는다."""
+        for version in reversed(self.list_versions()):
+            try:
+                df = self.load_artifact(version, "aux_signal_matrix")
+            except Exception as e:  # noqa: BLE001
+                log.warning("skip aux history version %s for %s: %s", version, key, e)
+                continue
+            hit = _actual_success_aux_row(df, key)
+            if not hit.empty:
+                return hit.tail(1).reset_index(drop=True)
+        return None
+
     def _prune(self):
         vs = sorted((self.root / "versions").iterdir())
         for old in vs[:-KEEP_LAST_N]:
@@ -296,6 +331,19 @@ class HfDatasetStore:
             return pd.read_parquet(fp)
         except (EntryNotFoundError, Exception):  # noqa: BLE001
             return None
+
+    def find_last_good_aux(self, key: str) -> pd.DataFrame | None:
+        """과거 Dataset 버전을 최신→과거 순서로 훑어 마지막 실제 성공 행을 찾는다."""
+        for version in reversed(self.list_versions()):
+            try:
+                df = self.load_artifact(version, "aux_signal_matrix")
+            except Exception as e:  # noqa: BLE001
+                log.warning("skip aux history version %s for %s: %s", version, key, e)
+                continue
+            hit = _actual_success_aux_row(df, key)
+            if not hit.empty:
+                return hit.tail(1).reset_index(drop=True)
+        return None
 
     def _prune(self):
         try:

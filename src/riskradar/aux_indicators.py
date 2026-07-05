@@ -98,19 +98,31 @@ def compute_direction(df: pd.DataFrame, spec: AC.AuxSeries,
 
 
 def collect_aux(api_key: str | None = None, timeout: float | None = None,
-                start: str | None = None) -> dict[str, AuxDirection]:
-    """보조 3개를 FRED에서 받아 방향까지 계산. 부분 실패 허용."""
+                start: str | None = None, max_attempts: int = 2) -> dict[str, AuxDirection]:
+    """보조 3개를 FRED에서 받아 방향까지 계산. 부분 실패 허용.
+
+    각 지표는 일시적인 네트워크·FRED 오류에 대비해 최대 ``max_attempts``회
+    요청한다. 한 지표가 끝내 실패해도 다른 보조지표와 핵심 6개는 계속 처리한다.
+    """
     from . import config as C
     api_key, timeout = FC._resolve_creds(api_key, timeout)
     start = start or C.FRED_START_DATE
+    max_attempts = max(1, int(max_attempts))
 
     out: dict[str, AuxDirection] = {}
     for key in AC.AUX_ORDER:
         spec = AC.AUX_SERIES[key]
-        res = FC.fetch_fred_series(spec.series_id, key, api_key, timeout, start)
-        if not res.ok:
+        last_error = None
+        res = None
+        for _attempt in range(1, max_attempts + 1):
+            res = FC.fetch_fred_series(spec.series_id, key, api_key, timeout, start)
+            if res.ok:
+                break
+            last_error = res.error
+        if res is None or not res.ok:
+            error = last_error or (getattr(res, "error", None) if res is not None else "fetch failed")
             out[key] = AuxDirection(key, spec.display_name, False, None, None,
-                                    None, DIRECTION_NA, None, 0, res.error)
+                                    None, DIRECTION_NA, None, 0, error)
             continue
         out[key] = compute_direction(res.df, spec)
     return out

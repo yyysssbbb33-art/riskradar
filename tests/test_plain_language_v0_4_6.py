@@ -56,8 +56,8 @@ def test_indicator_names_are_explanatory_not_market_acronyms():
 
 
 def test_historical_position_reads_as_rank_not_probability():
-    assert fmt_pct(82) == "높은 편 · 82%의 날보다 높음"
-    assert fmt_pct(12) == "낮은 편 · 12%의 날보다 높음"
+    assert fmt_pct(82) == "상위 18% 구간"
+    assert fmt_pct(12) == "하위 12% 구간"
 
 
 def test_current_board_uses_plain_columns_and_names():

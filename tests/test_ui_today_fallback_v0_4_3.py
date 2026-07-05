@@ -4,7 +4,7 @@ import pandas as pd
 
 from riskradar import pipeline
 from riskradar.ui import _today_context_with_fallback
-from synth import make_raw_by_key
+from tests.synth import make_raw_by_key
 
 
 def _aux_df() -> pd.DataFrame:

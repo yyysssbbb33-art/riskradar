@@ -1,6 +1,6 @@
 [project]
 name = "riskradar"
-version = "0.4.6"
+version = "0.4.7"
 requires-python = ">=3.10"
 dependencies = [
   "pandas>=2.0", "numpy>=1.24", "pyarrow>=14", "requests>=2.31",
@@ -17,3 +17,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

@@ -13,6 +13,7 @@ from .display_text import (LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y,
                            core_name, plain_language, state_name)
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .interpretation_cards import get_interpretation_card
+from .external_guidance import render_external_guidance
 from .state_guidance import render_state_guidance
 
 
@@ -123,6 +124,8 @@ def render_indicator_detail(
         f"> {one_line}",
         "",
         render_state_guidance(key, r, frames=frames, aux_df=aux_df, matrix=matrix),
+        "",
+        render_external_guidance(key),
         "",
         _linked_combo_markdown(data_quality, key),
         "",

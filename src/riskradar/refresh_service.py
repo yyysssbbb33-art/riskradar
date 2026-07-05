@@ -21,6 +21,7 @@ from . import interpretation_engine
 from . import fred_client, pipeline
 from . import telegram_client as tg
 from . import transforms as T
+from .version import __version__
 
 log = logging.getLogger(__name__)
 KST = ZoneInfo(C.APP_TIMEZONE)
@@ -152,6 +153,7 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             "synced_snapshot": _synced_df(out["frames"], snap),
             "aux_signal_matrix": aux_matrix,
             "data_quality": {
+                "code_version": __version__,
                 "failed_series": failed, "stale_series": stale,
                 "synced_staleness_days": snap["synced_staleness_days"],
                 "synced_staleness_label": T.staleness_label(
@@ -172,7 +174,8 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         status_str = "partial_success" if stale else "success"
         finished = _now_kst().isoformat()
         status = {
-            "schema_version": "1.0", "active_cache_version": cache_version,
+            "schema_version": "1.0", "code_version": __version__,
+            "active_cache_version": cache_version,
             "status": status_str,
             "last_refresh_started_at": started, "last_refresh_finished_at": finished,
             "last_success_at": finished,
@@ -247,19 +250,15 @@ def _aux_matrix(aux: dict, now: datetime) -> pd.DataFrame:
 
 
 def _carry_forward_aux(current: pd.DataFrame, store, now: datetime) -> pd.DataFrame:
-    """실패한 보조지표는 직전 성공 행을 보존한다.
+    """실패한 보조지표는 과거의 마지막 '실제 정상 수집값'으로 복구한다.
 
-    핵심 데이터처럼 raw 전체를 재계산하지는 못하지만, 원인 확인용 방향을 갑자기
-    '데이터 없음'으로 잃지 않게 한다. 최신성이 stale이면 해석 집계에서 제외된다.
+    최신 활성 캐시 하나만 보지 않는다. 버전을 최신→과거 순서로 검색하고
+    ``fetch_status=ok``인 실제 성공 행만 복구 원천으로 사용한다.
+    carried_forward 행을 다시 복구 원천으로 쓰지 않아 실패값 연쇄 복사를 막는다.
     """
-    getter = getattr(store, "last_good_aux", None)
-    if getter is None:
-        return current
-    try:
-        previous = getter()
-    except Exception:  # noqa: BLE001
-        return current
-    if previous is None or previous.empty:
+    finder = getattr(store, "find_last_good_aux", None)
+    legacy_getter = getattr(store, "last_good_aux", None)
+    if finder is None and legacy_getter is None:
         return current
 
     out = current.copy()
@@ -273,10 +272,27 @@ def _carry_forward_aux(current: pd.DataFrame, store, now: datetime) -> pd.DataFr
                    cur.get("latest_value") is None or pd.isna(cur.get("latest_value")))
         if not missing:
             continue
-        prev = previous.loc[previous["key"] == key]
-        if prev.empty:
+
+        try:
+            if finder is not None:
+                previous = finder(key)
+            else:
+                previous_all = legacy_getter()
+                if previous_all is None or previous_all.empty or "key" not in previous_all.columns:
+                    previous = None
+                else:
+                    previous = previous_all.loc[previous_all["key"].astype(str) == key].copy()
+                    if "fetch_status" in previous.columns:
+                        previous = previous.loc[previous["fetch_status"].astype(str) == "ok"]
+                    if "latest_value" in previous.columns:
+                        previous = previous.loc[pd.to_numeric(previous["latest_value"], errors="coerce").notna()]
+        except Exception as e:  # noqa: BLE001
+            log.warning("last-good aux search failed for %s: %s", key, e)
             continue
-        pr = prev.iloc[-1].copy()
+        if previous is None or previous.empty:
+            continue
+
+        pr = previous.iloc[-1].copy()
         if pr.get("latest_value") is None or pd.isna(pr.get("latest_value")):
             continue
         current_error = cur.get("error")
@@ -290,7 +306,7 @@ def _carry_forward_aux(current: pd.DataFrame, store, now: datetime) -> pd.DataFr
             out.at[i, "staleness_label"] = T.staleness_label(sd)
         out.at[i, "ok"] = False
         out.at[i, "fetch_status"] = "carried_forward"
-        out.at[i, "error"] = current_error or "current fetch failed; using previous successful value"
+        out.at[i, "error"] = current_error or "current fetch failed; using last actual successful value"
     return out
 
 

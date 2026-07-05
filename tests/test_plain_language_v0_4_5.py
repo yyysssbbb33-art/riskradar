@@ -27,9 +27,9 @@ def test_plain_names_hide_finance_acronyms():
 
 
 def test_percentile_is_explained_as_past_position_not_probability():
-    assert fmt_pct(82) == "높은 편 · 82%의 날보다 높음"
+    assert fmt_pct(82) == "상위 18% 구간"
     text = plain_language("최근 10년 위치 82%")
-    assert text == "최근 10년 중 82%의 날보다 높음"
+    assert text == "최근 10년 중 상위 18% 구간"
     assert "위험확률" not in text
 
 

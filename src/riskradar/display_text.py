@@ -240,7 +240,13 @@ def plain_language(text: str) -> str:
     def _old_pct(match: re.Match) -> str:
         years = match.group(1)
         pct = max(0.0, min(100.0, float(match.group(2))))
-        return f"최근 {years}년 중 {pct:.0f}%의 날보다 높음"
+        if 40.0 <= pct <= 60.0:
+            pos = "중간 구간"
+        elif pct < 40.0:
+            pos = f"하위 {pct:.0f}% 구간"
+        else:
+            pos = f"상위 {100.0 - pct:.0f}% 구간"
+        return f"최근 {years}년 중 {pos}"
 
     out = re.sub(
         r"최근 (5|10)년 위치\s+([0-9]+(?:\.[0-9]+)?)%",
