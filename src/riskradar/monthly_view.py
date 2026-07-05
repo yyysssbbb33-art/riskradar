@@ -13,6 +13,7 @@ import pandas as pd
 from . import config as C
 from .display_text import aux_name, core_name, plain_language
 from .formatting import fmt_change, fmt_value
+from . import state_rules as SR
 
 
 # 내부 latest_value 단위 기준. 과거 한 달 안의 움직임을 '설명할 만한 변화'로
@@ -27,6 +28,67 @@ MATERIAL_MOVE = {
 }
 
 RATE_DIRECTION_MOVE = 0.10  # %p (10bp)
+
+
+def reconstruct_history_from_chart_data(chart_data: pd.DataFrame, days: int = 30) -> pd.DataFrame:
+    """최신 캐시의 과거 시계열로 지난 ``days``일 기록을 즉석 재구성한다.
+
+    저장 스냅샷이 없어도 ``chart_data``에는 핵심 6개 지표의 과거 관측값과
+    point-in-time 상태가 들어 있다. 이를 signal_matrix 스냅샷과 비슷한 형태로
+    바꿔 월간 흐름 엔진과 표/차트가 그대로 사용할 수 있게 한다.
+
+    주의: 이것은 당시 앱 화면의 보존본이 아니라 *현재 코드 규칙으로 계산된
+    과거 관측일 기준 기록*이다.
+    """
+    if chart_data is None or chart_data.empty or "key" not in chart_data.columns or "date" not in chart_data.columns:
+        return pd.DataFrame()
+
+    d = chart_data.copy()
+    d["date"] = pd.to_datetime(d["date"], errors="coerce")
+    d = d.loc[d["date"].notna()].copy()
+    if d.empty:
+        return pd.DataFrame()
+
+    latest_date = d["date"].max()
+    cutoff = latest_date - pd.Timedelta(days=max(1, int(days)))
+    d = d.loc[d["date"] >= cutoff].copy()
+    if d.empty:
+        return pd.DataFrame()
+
+    rows: list[dict] = []
+    for _, row in d.sort_values(["date", "key"]).iterrows():
+        key = str(row.get("key", ""))
+        if key not in C.SERIES:
+            continue
+        spec = C.SERIES[key]
+        observed = pd.to_datetime(row["date"]).strftime("%Y-%m-%d")
+        try:
+            reason = SR.state_reason(key, row)
+        except Exception:
+            reason = str(row.get("state_label", ""))
+        rows.append({
+            "cache_version": "reconstructed-from-chart-data",
+            "snapshot_at_kst": f"{observed} 00:00:00",
+            "snapshot_date": observed,
+            "history_source": "reconstructed",
+            "series_id": spec.series_id,
+            "key": key,
+            "display_name": spec.display_name,
+            "axis": spec.axis,
+            "latest_observed_date": observed,
+            "latest_value": row.get("value"),
+            "value_unit": spec.value_unit,
+            "change_20obs": row.get("change_20obs"),
+            "change_60obs": row.get("change_60obs"),
+            "change_unit": spec.change_unit,
+            "percentile_5y": row.get("percentile_5y"),
+            "percentile_10y": row.get("percentile_10y"),
+            "state_code": row.get("state_code", ""),
+            "state_label": row.get("state_label", ""),
+            "state_reason": reason,
+            "drop_flag": bool(row.get("drop_flag", False)),
+        })
+    return pd.DataFrame(rows).sort_values(["snapshot_at_kst", "key"]).reset_index(drop=True)
 
 
 @dataclass(frozen=True)
@@ -168,7 +230,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     if not stats:
         return (
             "## 지난 30일 흐름\n\n"
-            "아직 한 달 흐름을 해석할 만큼 저장된 기록이 없습니다. 일별 스냅샷이 더 쌓이면 표시됩니다."
+            "아직 한 달 흐름을 해석할 만큼 과거 관측 데이터가 없습니다."
         )
 
     lines = [

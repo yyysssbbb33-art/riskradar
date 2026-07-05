@@ -21,7 +21,7 @@ from .interpretation_cards import get_interpretation_card
 from .indicator_detail_view import render_indicator_detail
 from .relationship_guide import RELATIONSHIP_GUIDE
 from .today_view import render_today_markdown
-from .monthly_view import render_monthly_markdown
+from .monthly_view import reconstruct_history_from_chart_data, render_monthly_markdown
 from .version import __version__
 
 KST = ZoneInfo(C.APP_TIMEZONE)
@@ -80,9 +80,11 @@ EASY_GLOSSARY = r"""
 HISTORY_HELP = r"""
 ### 지난 30일 흐름 읽는 법
 
-매일 저장된 RiskRadar 기록을 모아 **한 달 사이 무엇이 달라졌는지, 한때 크게 움직였다가 되돌아온 것은 무엇인지, 아직 남아 있는 변화는 무엇인지** 보여줍니다. 시작값과 현재값만 비교하지 않습니다.
+최신 캐시에 이미 들어 있는 **과거 FRED 시계열**로 지난 30일을 즉석에서 다시 구성합니다. 그래서 앱을 오늘 처음 설치했거나 매일 스냅샷을 저장하지 않았어도, 핵심 6개 지표의 한 달 흐름을 바로 볼 수 있습니다.
 
-같은 날짜에 자동·수동 실행이 여러 번 있었다면 **그 날짜의 마지막 성공 스냅샷 한 개만** 표시합니다. 날짜는 FRED 관측일이 아니라 RiskRadar 저장일이므로 `관측일`도 같이 봅니다.
+**한 달 사이 무엇이 달라졌는지, 한때 크게 움직였다가 되돌아온 것은 무엇인지, 아직 남아 있는 변화는 무엇인지**를 함께 봅니다. 시작값과 현재값만 비교하지 않습니다.
+
+> 날짜는 RiskRadar 저장일이 아니라 **실제 지표 관측일**입니다. 또한 당시 화면을 그대로 보존한 기록이 아니라, **현재 코드 규칙으로 과거 관측일을 다시 읽은 결과**이므로 과거 버전의 판정과는 다를 수 있습니다.
 """
 
 SYNCED_HELP = r"""
@@ -181,11 +183,12 @@ def _synced_df(arts: dict) -> pd.DataFrame:
 
 def _history_table(history: pd.DataFrame, key: str) -> pd.DataFrame:
     if history.empty:
-        return pd.DataFrame([{"안내": "저장된 기록이 아직 없습니다. 다음 자동 갱신부터 쌓입니다."}])
+        return pd.DataFrame([{"안내": "지난 30일을 다시 구성할 과거 시계열이 없습니다."}])
     d = history.loc[history["key"] == key].copy()
     if d.empty:
-        return pd.DataFrame([{"안내": f"{core_name(key)} 기록이 없습니다."}])
+        return pd.DataFrame([{"안내": f"{core_name(key)}의 지난 30일 기록이 없습니다."}])
     d = d.sort_values("snapshot_at_kst")
+    reconstructed = "history_source" in d.columns and d["history_source"].astype(str).eq("reconstructed").any()
     if "state_code" in d.columns:
         d["상태"] = [state_name(str(c), str(l), drop=bool(drop), key=key) for c, l, drop in zip(d["state_code"], d["state_label"], d["drop_flag"])]
     else:
@@ -198,6 +201,14 @@ def _history_table(history: pd.DataFrame, key: str) -> pd.DataFrame:
     d["빠르게 내림"] = ["⚠︎" if x else "" for x in d["drop_flag"]]
     d["지표"] = core_name(key)
     d["state_reason"] = d["state_reason"].astype(str).map(plain_language)
+    if reconstructed:
+        return d[[
+            "snapshot_date", "지표", "상태", "최신값", LABEL_1M, LABEL_3M,
+            LABEL_5Y, LABEL_10Y, "빠르게 내림", "state_reason",
+        ]].rename(columns={
+            "snapshot_date": "관측일",
+            "state_reason": "왜 이렇게 표시됐나",
+        })
     return d[[
         "snapshot_date", "snapshot_at_kst", "지표", "상태",
         "최신값", "latest_observed_date", LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y,
@@ -231,13 +242,13 @@ def _signal_matrix_df(matrix: pd.DataFrame) -> pd.DataFrame:
 
 def _history_plot_data(history: pd.DataFrame, key: str) -> pd.DataFrame:
     if history.empty:
-        return pd.DataFrame(columns=["저장일", "최신값"])
+        return pd.DataFrame(columns=["날짜", "최신값"])
     d = history.loc[history["key"] == key, ["snapshot_date", "latest_value"]].copy()
     if d.empty:
-        return pd.DataFrame(columns=["저장일", "최신값"])
-    d["저장일"] = pd.to_datetime(d["snapshot_date"])
+        return pd.DataFrame(columns=["날짜", "최신값"])
+    d["날짜"] = pd.to_datetime(d["snapshot_date"])
     d["최신값"] = d["latest_value"]
-    return d[["저장일", "최신값"]].sort_values("저장일")
+    return d[["날짜", "최신값"]].sort_values("날짜")
 
 
 def _chart(arts: dict, key: str):
@@ -351,6 +362,27 @@ def _aux_status_df(aux_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols)
 
 
+def _data_generation_info(status: dict | None, data_quality: dict | None) -> dict[str, str]:
+    """활성 데이터가 언제·어떤 코드로 만들어졌는지 사용자용으로 정리한다."""
+    status = status or {}
+    data_quality = data_quality or {}
+    active = str(status.get("active_cache_version") or "확인 불가")
+    code = status.get("code_version") or data_quality.get("code_version")
+    code_text = str(code) if code else "기록되지 않음 (구버전 데이터)"
+    generated = status.get("last_refresh_finished_at") or status.get("last_success_at")
+    if not generated and active not in {"", "확인 불가", "None"}:
+        try:
+            generated = datetime.strptime(active, "%Y-%m-%dT%H-%M-%SKST").strftime("%Y-%m-%d %H:%M KST")
+        except ValueError:
+            generated = None
+    return {
+        "active_cache_version": active,
+        "generated_at": str(generated or "확인 불가"),
+        "code_version": code_text,
+        "code_version_missing": "yes" if not code else "no",
+    }
+
+
 def build_app():
     store = cache_store.get_store()
     try:
@@ -360,12 +392,17 @@ def build_app():
             gr.Markdown(f"# RiskRadar\n\n저장된 데이터를 아직 읽을 수 없습니다: `{e}`")
         return demo
 
-    try:
-        history = store.load_history(days=30)
-        history_error = None
-    except Exception as e:
-        history = pd.DataFrame()
-        history_error = f"최근 기록을 읽을 수 없습니다: {type(e).__name__}: {e}"
+    # 지난 30일은 최신 chart_data의 과거 관측 시계열로 우선 재구성한다.
+    # 저장 스냅샷은 chart_data가 없는 구버전 캐시에서만 fallback으로 쓴다.
+    history = reconstruct_history_from_chart_data(arts.get("chart_data", pd.DataFrame()), days=30)
+    history_source = "과거 원자료 재구성" if not history.empty else "저장 스냅샷"
+    history_error = None
+    if history.empty:
+        try:
+            history = store.load_history(days=30)
+        except Exception as e:
+            history = pd.DataFrame()
+            history_error = f"지난 30일 기록을 읽을 수 없습니다: {type(e).__name__}: {e}"
 
     try:
         data_quality = store.load_data_quality()
@@ -427,13 +464,14 @@ def build_app():
             gr.Markdown(HISTORY_HELP)
             if history_error:
                 gr.Markdown(f"⚠️ {history_error}")
+            gr.Markdown(f"**현재 30일 데이터 기준:** {history_source}")
             gr.Markdown(monthly_md)
-            gr.Markdown("---\n\n## 지표별 30일 기록")
+            gr.Markdown("---\n\n## 지표별 30일 흐름")
             selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
             interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
             hist_plot = gr.LinePlot(
                 value=_history_plot_data(history, default_key),
-                x="저장일", y="최신값",
+                x="날짜", y="최신값",
                 title="선택 지표의 지난 30일 값 변화",
             )
             hist_table = gr.Dataframe(_history_table(history, default_key), wrap=True, interactive=False)
@@ -462,12 +500,24 @@ def build_app():
 
         with gr.Tab("데이터 상태"):
             gr.Markdown("### 데이터 상태\n\n데이터 버전, 마지막 갱신 시각, 보조지표 수집 실패와 과거값 사용 여부를 확인하는 운영 점검용 정보입니다.")
-            data_code_version = str(status.get("code_version") or data_quality.get("code_version") or "기록 없음")
+            generation = _data_generation_info(status, data_quality)
+            data_code_version = generation["code_version"]
+            dataset_name = str(getattr(store, "repo_id", "로컬 저장소"))
             gr.Markdown(
                 f"- **현재 화면 코드 버전:** `{__version__}`\n"
-                f"- **마지막 데이터 생성 코드 버전:** `{data_code_version}`"
+                f"- **활성 데이터 버전:** `{generation['active_cache_version']}`\n"
+                f"- **마지막 데이터 생성 시각:** `{generation['generated_at']}`\n"
+                f"- **데이터 생성 코드 버전:** `{data_code_version}`\n"
+                f"- **읽고 있는 데이터 저장소:** `{dataset_name}`"
             )
-            if data_code_version not in {"기록 없음", __version__}:
+            if generation["code_version_missing"] == "yes":
+                gr.Markdown(
+                    "⚠️ **활성 데이터는 존재하지만 생성 코드 버전이 기록돼 있지 않습니다.** "
+                    "즉 데이터 자체가 없는 것은 아니고, 구버전 배치가 만든 캐시이거나 최신 GitHub 배치가 현재 데이터 저장소에 아직 발행되지 않은 상태입니다. "
+                    "v0.4.7 이상 배치가 새 캐시를 정상 발행하면 이 항목에는 반드시 버전이 기록됩니다. "
+                    "HF 화면 코드는 FRED를 직접 수집하지 않으므로, 보조지표가 비어 있다면 GitHub 배치 쪽 최신 코드와 실제 발행 대상 저장소를 먼저 확인해야 합니다."
+                )
+            elif data_code_version != __version__:
                 gr.Markdown("⚠️ 화면 코드와 마지막 배치 코드 버전이 다릅니다. 보조지표가 계속 비어 있다면 GitHub 배치가 최신 코드를 실행하는지 먼저 확인하세요.")
             gr.Markdown("#### 보조지표 수집 상태")
             gr.Dataframe(_aux_status_df(aux_df), wrap=True, interactive=False)
