@@ -38,9 +38,9 @@ def _fmt_row(r: pd.Series) -> str:
     val = fmt_value(r["latest_value"], r["value_unit"])
     tail = ""
     if pd.notna(r["percentile_10y"]):
-        tail = f" | 최근 10년 위치 {r['percentile_10y']:.0f}%"
+        tail = f" | 10Y pct {r['percentile_10y']:.0f}%"
     elif pd.notna(r["change_60obs"]):
-        tail = f" | 약 3개월 변화 {r['change_60obs']:+.0f}bp"
+        tail = f" | 60obs {r['change_60obs']:+.0f}bp"
     drop = " ↓급락" if r["drop_flag"] else ""
     return f"[{r['display_name']}] {r['state_label']} | {val}{tail}{drop}"
 
@@ -48,26 +48,26 @@ def _fmt_row(r: pd.Series) -> str:
 def build_success(batch_kst: str, cache_version: str, matrix: pd.DataFrame,
                   synced: dict, stale: list[str]) -> str:
     lines = ["✅ RiskRadar 업데이트 완료", "",
-             f"기준: {batch_kst}", f"데이터 버전: {cache_version}", ""]
+             f"기준: {batch_kst}", f"캐시: {cache_version}", ""]
     lines += [_fmt_row(r) for _, r in matrix.iterrows()]
-    lines += ["", f"공통 기준일: {synced.get('synced_date')}"]
-    lines.append(f"지연 지표: {', '.join(stale) if stale else '없음'}")
+    lines += ["", f"Synced date: {synced.get('synced_date')}"]
+    lines.append(f"Stale series: {', '.join(stale) if stale else 'none'}")
     return "\n".join(lines)
 
 
 def build_partial(cache_version: str, matrix: pd.DataFrame, synced: dict,
                   failed: list[str], stale: list[str]) -> str:
     lines = ["⚠️ RiskRadar 부분 업데이트", "",
-             f"데이터 버전: {cache_version}",
-             f"수집 실패 지표: {', '.join(failed)}",
-             "처리: 직전 성공 원자료를 유지하고 지연으로 표시", ""]
+             f"캐시: {cache_version}",
+             f"실패 fetch: {', '.join(failed)}",
+             "처리: 직전 성공 raw 유지, stale 표시", ""]
     lines += [_fmt_row(r) for _, r in matrix.iterrows()]
-    lines += ["", f"공통 기준일: {synced.get('synced_date')}",
-              f"지연 지표: {', '.join(stale)}"]
+    lines += ["", f"Synced date: {synced.get('synced_date')}",
+              f"Stale series: {', '.join(stale)}"]
     return "\n".join(lines)
 
 
 def build_failure(stage: str, error: str) -> str:
     return ("❌ RiskRadar 업데이트 실패\n\n"
             f"단계: {stage}\n에러: {error}\n\n"
-            "새 데이터를 발행하지 않았습니다. 이전 데이터가 화면에 계속 표시됩니다.")
+            "새 캐시를 발행하지 않았습니다. 이전 캐시가 UI에 계속 표시됩니다.")

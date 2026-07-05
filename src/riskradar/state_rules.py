@@ -168,13 +168,13 @@ def state_reason(key: str, row: pd.Series) -> str:
     c60 = row.get("change_60obs")
     p10 = row.get("percentile_10y")
     if s.state_kind in ("vix", "hyoas"):
-        ptxt = f"최근 10년 위치 {p10:.0f}%" if not pd.isna(p10) else "최근 10년 위치 계산 불가"
+        ptxt = f"10년 백분위 {p10:.0f}%" if not pd.isna(p10) else "백분위 미가용"
         return f"{row['value']:.1f}{s.value_unit}, {ptxt} 기준 '{LABELS[code]}'."
     if s.state_kind == "t10y3m":
         return ("경기사이클 배경 지표. 현재 시장 스트레스가 아니라 "
                 f"수익률곡선 상태가 '{LABELS[code]}'.")
     # rate
-    ctxt = f"약 3개월 변화 {c60:+.0f}bp" if not pd.isna(c60) else "약 3개월 변화 계산 불가"
+    ctxt = f"60obs {c60:+.0f}bp" if not pd.isna(c60) else "변화량 미가용"
     base = f"{row['value']:.2f}% ({ctxt}) 기준 '{LABELS[code]}'."
     if row.get("drop_flag"):
         base += " 금리 급락 플래그: 완화 기대일 수도, 경기둔화 신호일 수도 있음."
