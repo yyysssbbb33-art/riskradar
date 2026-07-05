@@ -6,12 +6,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import gradio as gr
 import pandas as pd
 
-from . import cache_store
+from . import axis_engine, cache_store, interpretation_engine
 from . import config as C
 from .display_text import LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y, core_name
 from .formatting import fmt_change, fmt_pct, fmt_value
@@ -226,6 +227,77 @@ def _chart(arts: dict, key: str):
     )
 
 
+
+def _frames_from_chart_data(chart_data: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """기존 캐시의 chart_data를 3축/조합 엔진 입력 프레임으로 복원한다."""
+    if chart_data is None or chart_data.empty or "key" not in chart_data.columns:
+        return {}
+    frames: dict[str, pd.DataFrame] = {}
+    for key, group in chart_data.groupby("key", sort=False):
+        frame = group.copy()
+        if "date" in frame.columns:
+            frame["date"] = pd.to_datetime(frame["date"])
+            frame = frame.sort_values("date")
+        frames[str(key)] = frame.reset_index(drop=True)
+    return frames
+
+
+def _readings_need_branch_upgrade(readings: list[dict] | None) -> bool:
+    """v0.4.4 이전 캐시의 checks에는 결과별 branches가 없다."""
+    if not readings:
+        return True
+    for reading in readings:
+        for check in reading.get("checks") or []:
+            if not check.get("branches"):
+                return True
+    return False
+
+
+def _today_context_with_fallback(data_quality: dict | None, arts: dict,
+                                 aux_df: pd.DataFrame) -> dict:
+    """옛 캐시에도 오늘의 해석을 표시한다.
+
+    v0.4 이전/초기 v0.4 캐시에는 data_quality.json의 axes/readings가 없을 수 있다.
+    이 경우 UI가 이미 읽은 chart_data와 aux_signal_matrix로 같은 규칙 엔진을
+    즉석 실행한다. refresh는 하지 않으며 원격 데이터도 새로 가져오지 않는다.
+    """
+    dq = dict(data_quality or {})
+    need_axes = not dq.get("axes")
+    need_readings = _readings_need_branch_upgrade(dq.get("readings"))
+    if not (need_axes or need_readings):
+        return dq
+
+    frames = _frames_from_chart_data(arts.get("chart_data", pd.DataFrame()))
+    if not frames:
+        return dq
+
+    if need_axes:
+        try:
+            dq["axes"] = axis_engine.composite_view(frames).to_dict()
+        except Exception:
+            pass
+
+    if need_readings:
+        try:
+            aux = {}
+            aux_status = {}
+            if aux_df is not None and not aux_df.empty:
+                for _, row in aux_df.iterrows():
+                    key = str(row.get("key", ""))
+                    if not key:
+                        continue
+                    aux[key] = SimpleNamespace(direction=str(row.get("direction", "판정불가")))
+                    aux_status[key] = str(row.get("staleness_label", "unknown"))
+            dq["readings"] = [
+                reading.to_dict()
+                for reading in interpretation_engine.read_all(
+                    frames, aux, aux_status=aux_status
+                )
+            ]
+        except Exception:
+            pass
+    return dq
+
 def build_app():
     store = cache_store.get_store()
     try:
@@ -251,6 +323,8 @@ def build_app():
     except Exception:
         aux_df = pd.DataFrame()
 
+    frames = _frames_from_chart_data(arts.get("chart_data", pd.DataFrame()))
+    data_quality = _today_context_with_fallback(data_quality, arts, aux_df)
     today_md = render_today_markdown(data_quality, aux_df)
     default_key = "HYOAS" if "HYOAS" in C.SERIES_ORDER else C.SERIES_ORDER[0]
     choices = [(core_name(k), k) for k in C.SERIES_ORDER]
@@ -281,6 +355,9 @@ def build_app():
                             row,
                             data_quality,
                             _one_line_interpretation(row),
+                            frames=frames,
+                            aux_df=aux_df,
+                            matrix=arts["signal_matrix"],
                         )
                     )
 

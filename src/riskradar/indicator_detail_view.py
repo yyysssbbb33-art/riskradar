@@ -12,6 +12,7 @@ import pandas as pd
 from .display_text import LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y, core_name
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .interpretation_cards import get_interpretation_card
+from .state_guidance import render_state_guidance
 
 
 # 어떤 조합이 어떤 핵심지표와 직접 연결되는지 명시적으로 관리한다.
@@ -99,6 +100,9 @@ def render_indicator_detail(
     row: pd.Series | dict,
     data_quality: dict | None,
     one_line: str,
+    frames: dict[str, pd.DataFrame] | None = None,
+    aux_df: pd.DataFrame | None = None,
+    matrix: pd.DataFrame | None = None,
 ) -> str:
     """현재 데이터 요약 + 현재 연결 조합 + 고정 8칸 카드를 한 문서로 렌더링한다."""
     r = pd.Series(row)
@@ -116,6 +120,8 @@ def render_indicator_detail(
         f"- **{LABEL_10Y}:** {fmt_pct(r['percentile_10y'])}",
         "",
         f"> {one_line}",
+        "",
+        render_state_guidance(key, r, frames=frames, aux_df=aux_df, matrix=matrix),
         "",
         _linked_combo_markdown(data_quality, key),
         "",

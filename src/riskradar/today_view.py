@@ -138,6 +138,16 @@ def _reading_block(reading: dict) -> str:
         lines.append(
             f"- **{check['label']}** [{check['direction']}]{ftxt}: {check['text']}"
         )
+        branches = check.get("branches") or {}
+        alternatives = [
+            (direction, text)
+            for direction, text in branches.items()
+            if direction != check.get("direction")
+        ]
+        if alternatives:
+            lines.append("  - **결과가 달라지면**")
+            for direction, text in alternatives:
+                lines.append(f"    - **{direction}:** {text}")
 
     if supported:
         lines += ["", "### 현재 상대적으로 더 잘 맞는 설명"]

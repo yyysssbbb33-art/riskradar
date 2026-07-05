@@ -80,6 +80,7 @@ class CheckResult:
     direction: str
     text: str
     freshness: str = "normal"
+    branches: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -111,6 +112,7 @@ class ComboReading:
                     "direction": c.direction,
                     "text": c.text,
                     "freshness": c.freshness,
+                    "branches": c.branches,
                 }
                 for c in self.checks
             ],
@@ -142,7 +144,10 @@ def _build_reading(combo: CR.Combo, ctx: ReadingContext) -> ComboReading:
         freshness = ctx.freshness(chk.key)
         if freshness == "delayed" and direction != CR.NA:
             text += " (업데이트가 다소 지연된 자료입니다.)"
-        checks.append(CheckResult(chk.key, chk.label, direction, text, freshness))
+        checks.append(CheckResult(
+            chk.key, chk.label, direction, text, freshness,
+            {CR.UP: chk.up, CR.DOWN: chk.down, CR.FLAT: chk.flat},
+        ))
         supported.extend(supports)
         weakened.extend(weakens)
 
