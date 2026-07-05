@@ -1,0 +1,209 @@
+"""RiskRadar v0.4.0 — 3축 복합 조망 엔진.
+
+원칙:
+- 6개를 그대로 더하지 않는다. 금리 신호를 여러 번 세는 문제를 피해 3축으로 정리한다.
+- 변동성·신용 축은 VIX(빠른 센서)와 HY OAS(확인 센서)를 '동등 투표'하지 않는다.
+- 금리 방향 축은 다수결하지 않는다. 방향의 엇갈림(혼합) 자체를 정보로 남긴다.
+- 최상단은 단일 위험점수/행동유도 라벨을 만들지 않는다. '몇 축이 변했는가'만 센다.
+
+모든 컷은 C등급 운영 규칙이다. 기존 단일 지표 상태를 재사용하고 새 임계값을 최소화한다.
+입력은 pipeline.compute_frames()의 frames(각 지표 시계열 + state_code).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import pandas as pd
+
+from .state_rules import LABELS
+
+# 활성/방향 기준 상태 (기존 state_code 재사용)
+VIX_ACTIVE_STATES = {"watch", "stress"}
+VIX_STRONG = "stress"
+HY_ACTIVE_STATES = {"watch", "stress"}   # calm/neutral = 기본
+RATE_UP_STATES = {"rise_watch", "rate_shock"}
+CYCLE_BASE = "normal"
+
+DIR_UP, DIR_DOWN, DIR_BASE = "상승", "하락", "기본"
+
+
+@dataclass(frozen=True)
+class AxisCfg:
+    """3축 판정 C등급 운영 규칙."""
+    vix_persist_window: int = 5   # 최근 N개 관측
+    vix_persist_min: int = 3      # 그 중 M개가 기본을 벗어나면 지속 활성
+    e_link_window: int = 10       # '변동성 진정·신용 지속' 판정용 연결 창
+
+
+AXIS = AxisCfg()
+
+DISCLAIMER = ("축 요약은 기존 단일 지표 상태를 묶어 보기 위한 RiskRadar 내부 참고 규칙(C등급)입니다. "
+              "학술 모델·위험 확률·투자 신호가 아닙니다.")
+
+
+# ---- 변동성·신용 축 --------------------------------------------------------
+
+@dataclass
+class VolCreditAxis:
+    state: str          # A~E
+    label: str
+    changed: bool
+    vix_active: bool
+    vix_reason: str     # immediate | persistent | base
+    hy_active: bool
+    vix_state: str
+    hy_state: str
+    note: str
+
+    def to_dict(self) -> dict:
+        return {k: getattr(self, k) for k in
+                ("state", "label", "changed", "vix_active", "vix_reason",
+                 "hy_active", "vix_state", "hy_state", "note")}
+
+
+def _vix_active(frame: pd.DataFrame, cfg: AxisCfg) -> tuple[bool, str]:
+    codes = frame["state_code"].tolist()
+    if not codes:
+        return False, "base"
+    if codes[-1] == VIX_STRONG:
+        return True, "immediate"
+    window = codes[-cfg.vix_persist_window:]
+    off_base = sum(1 for c in window if c in VIX_ACTIVE_STATES)
+    if off_base >= cfg.vix_persist_min:
+        return True, "persistent"
+    return False, "base"
+
+
+def _hy_active(frame: pd.DataFrame) -> bool:
+    codes = frame["state_code"].tolist()
+    return bool(codes) and codes[-1] in HY_ACTIVE_STATES
+
+
+def vol_credit_axis(frames: dict[str, pd.DataFrame], cfg: AxisCfg = AXIS) -> VolCreditAxis:
+    vf, hf = frames.get("VIX"), frames.get("HYOAS")
+    vix_active, vreason = _vix_active(vf, cfg) if vf is not None else (False, "base")
+    hy_active = _hy_active(hf) if hf is not None else False
+    vix_state = vf["state_code"].iloc[-1] if vf is not None and len(vf) else "calm"
+    hy_state = hf["state_code"].iloc[-1] if hf is not None and len(hf) else "calm"
+
+    if vix_active and hy_active:
+        state, label = "D", "변동성·신용 동반"
+        note = "VIX와 HY OAS 모두 기준상 변화 상태입니다."
+    elif vix_active:
+        state, label = "B", "변동성 선행"
+        note = "변화가 변동성 지표에서 먼저 나타나고 HY OAS는 기본 상태입니다."
+    elif hy_active:
+        recent = vf["state_code"].iloc[-cfg.e_link_window:].tolist() if vf is not None else []
+        had_vix = any(c in VIX_ACTIVE_STATES for c in recent)
+        if had_vix:
+            state, label = "E", "변동성 진정·신용 변화 지속"
+            note = "최근 VIX 변화는 완화됐지만 HY OAS는 아직 변화 상태입니다."
+        else:
+            state, label = "C", "신용 단독 변화"
+            note = "HY OAS의 변화가 VIX보다 더 뚜렷합니다."
+    else:
+        state, label = "A", "뚜렷한 변화 없음"
+        note = "VIX와 HY OAS 모두 현재 기준상 기본 상태입니다."
+
+    return VolCreditAxis(state, label, state != "A", vix_active, vreason,
+                         hy_active, vix_state, hy_state, note)
+
+
+# ---- 경기 사이클 축 --------------------------------------------------------
+
+@dataclass
+class CycleAxis:
+    state: str
+    label: str
+    changed: bool
+
+    def to_dict(self) -> dict:
+        return {"state": self.state, "label": self.label, "changed": self.changed}
+
+
+def cycle_axis(frames: dict[str, pd.DataFrame]) -> CycleAxis:
+    tf = frames.get("T10Y3M")
+    code = tf["state_code"].iloc[-1] if tf is not None and len(tf) else CYCLE_BASE
+    return CycleAxis(code, LABELS.get(code, code), code != CYCLE_BASE)
+
+
+# ---- 금리 방향 축 ----------------------------------------------------------
+
+@dataclass
+class RateAxis:
+    result: str                 # 변화 없음 / 상승 방향 / 하락 방향 / 혼합 방향
+    changed: bool
+    members: dict               # key -> 상승/하락/기본
+    member_states: dict
+
+    def to_dict(self) -> dict:
+        return {"result": self.result, "changed": self.changed,
+                "members": self.members, "member_states": self.member_states}
+
+
+def _rate_dir(frame: pd.DataFrame) -> str:
+    if frame is None or not len(frame):
+        return DIR_BASE
+    r = frame.iloc[-1]
+    if bool(r.get("drop_flag", False)):
+        return DIR_DOWN
+    if r["state_code"] in RATE_UP_STATES:
+        return DIR_UP
+    return DIR_BASE
+
+
+def rate_axis(frames: dict[str, pd.DataFrame]) -> RateAxis:
+    members, states = {}, {}
+    for key in ("DGS30", "DGS2", "DFII10"):
+        f = frames.get(key)
+        members[key] = _rate_dir(f)
+        states[key] = f["state_code"].iloc[-1] if f is not None and len(f) else "stable"
+    dirs = set(members.values())
+    up, down = DIR_UP in dirs, DIR_DOWN in dirs
+    if up and down:
+        result = "혼합 방향"
+    elif up:
+        result = "상승 방향"
+    elif down:
+        result = "하락 방향"
+    else:
+        result = "변화 없음"
+    return RateAxis(result, result != "변화 없음", members, states)
+
+
+# ---- 최상단 복합 조망 ------------------------------------------------------
+
+@dataclass
+class CompositeView:
+    changed_count: int
+    changed_axes: list
+    base_axes: list
+    vol_credit: VolCreditAxis
+    cycle: CycleAxis
+    rate: RateAxis
+    disclaimer: str = field(default=DISCLAIMER)
+
+    def summary_line(self) -> str:
+        return f"현재 3축 중 {self.changed_count}축에서 기준상 변화"
+
+    def to_dict(self) -> dict:
+        return {
+            "changed_count": self.changed_count,
+            "changed_axes": self.changed_axes,
+            "base_axes": self.base_axes,
+            "summary_line": self.summary_line(),
+            "vol_credit": self.vol_credit.to_dict(),
+            "cycle": self.cycle.to_dict(),
+            "rate": self.rate.to_dict(),
+            "disclaimer": self.disclaimer,
+        }
+
+
+def composite_view(frames: dict[str, pd.DataFrame], cfg: AxisCfg = AXIS) -> CompositeView:
+    vc = vol_credit_axis(frames, cfg)
+    cy = cycle_axis(frames)
+    rt = rate_axis(frames)
+    axes = [("변동성·신용", vc.changed), ("경기 사이클", cy.changed), ("금리 방향", rt.changed)]
+    changed = [n for n, c in axes if c]
+    base = [n for n, c in axes if not c]
+    return CompositeView(len(changed), changed, base, vc, cy, rt)

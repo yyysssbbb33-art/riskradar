@@ -13,6 +13,10 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from . import config as C
+from . import aux_config as AC
+from . import aux_indicators
+from . import axis_engine
+from . import interpretation_engine
 from . import fred_client, pipeline
 from . import telegram_client as tg
 from . import transforms as T
@@ -66,8 +70,9 @@ def _synced_df(frames: dict[str, pd.DataFrame], snap: dict) -> pd.DataFrame:
 
 
 def run_refresh(fetcher: Callable[[], dict] | None = None,
+                aux_fetcher: Callable[[], dict] | None = None,
                 store=None, notify: bool = True) -> dict:
-    """전체 refresh. fetcher/store 주입으로 오프라인 테스트 가능."""
+    """전체 refresh. fetcher/aux_fetcher/store 주입으로 오프라인 테스트 가능."""
     from . import cache_store
     store = store or cache_store.get_store()
     now = _now_kst()
@@ -105,18 +110,44 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         out = pipeline.compute_all(raw_by_key)
         matrix, chart, snap = out["signal_matrix"], out["chart_data"], out["synced"]
 
+        # 3b) 보조지표(2층). 실패해도 핵심 6개가 정상이면 전체는 성공.
+        try:
+            aux = aux_fetcher() if aux_fetcher else aux_indicators.collect_aux()
+        except Exception as e:  # noqa: BLE001 - 보조지표는 원인 확인용, 전체를 깨지 않음
+            log.warning("aux collect failed: %s", e)
+            aux = {}
+        aux_matrix = _aux_matrix(aux, now)
+        aux_failed = [k for k in AC.AUX_ORDER
+                      if k not in aux or not getattr(aux[k], "ok", False)]
+
+        # 3c) 3축 복합 조망 + 조건부 해석. 계산 실패는 전체를 깨지 않음.
+        try:
+            composite = axis_engine.composite_view(out["frames"])
+            readings = interpretation_engine.read_all(out["frames"], aux)
+            axes = composite.to_dict()
+            reading_dicts = [r.to_dict() for r in readings]
+        except Exception as e:  # noqa: BLE001
+            log.warning("axis/interpretation failed: %s", e)
+            axes, reading_dicts = None, []
+
         # 4) artifacts
         artifacts = {
             "raw_fred": _raw_long(raw_by_key, started, set(stale)),
             "signal_matrix": matrix,
             "chart_data": chart,
             "synced_snapshot": _synced_df(out["frames"], snap),
+            "aux_signal_matrix": aux_matrix,
             "data_quality": {
                 "failed_series": failed, "stale_series": stale,
                 "synced_staleness_days": snap["synced_staleness_days"],
                 "synced_staleness_label": T.staleness_label(
                     snap["synced_staleness_days"]),
                 "row_counts": {k: int(len(v)) for k, v in raw_by_key.items()},
+                "aux_directions": {k: getattr(aux.get(k), "direction", "판정불가")
+                                   for k in AC.AUX_ORDER},
+                "aux_failed": aux_failed,
+                "axes": axes,
+                "readings": reading_dicts,
             },
         }
         status_str = "partial_success" if stale else "success"
@@ -157,6 +188,41 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             tg.send(tg.build_failure("run_refresh", f"{type(e).__name__}: {e}"))
         return {"status": "failed", "error": f"{type(e).__name__}: {e}",
                 "active_cache_version": None}
+
+
+def _aux_matrix(aux: dict, now: datetime) -> pd.DataFrame:
+    """보조지표 방향 결과 + freshness를 UI/저장용 표로. 항상 AUX_ORDER 전체 행."""
+    batch_date = now.date()
+    rows = []
+    for key in AC.AUX_ORDER:
+        spec = AC.AUX_SERIES[key]
+        a = aux.get(key)
+        if a is None:
+            rows.append({
+                "key": key, "series_id": spec.series_id,
+                "display_name": spec.display_name, "ok": False,
+                "latest_value": None, "value_unit": spec.value_unit,
+                "latest_date": None, "change_1m": None,
+                "change_unit": spec.change_unit, "direction": "판정불가",
+                "pct_in_history": None, "n_obs": 0,
+                "stale_days": None, "staleness_label": "stale", "error": "missing",
+            })
+            continue
+        if a.latest_date:
+            sd = (batch_date - pd.to_datetime(a.latest_date).date()).days
+            slabel = T.staleness_label(sd)
+        else:
+            sd, slabel = None, "stale"
+        rows.append({
+            "key": key, "series_id": spec.series_id,
+            "display_name": spec.display_name, "ok": a.ok,
+            "latest_value": a.latest_value, "value_unit": spec.value_unit,
+            "latest_date": a.latest_date, "change_1m": a.change_1m,
+            "change_unit": spec.change_unit, "direction": a.direction,
+            "pct_in_history": a.pct_in_history, "n_obs": a.n_obs,
+            "stale_days": sd, "staleness_label": slabel, "error": a.error,
+        })
+    return pd.DataFrame(rows)
 
 
 def _n(x):

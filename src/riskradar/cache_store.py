@@ -24,6 +24,9 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 ARTIFACT_PARQUETS = ["raw_fred", "signal_matrix", "synced_snapshot", "chart_data"]
+# 하위호환: 옛 캐시 버전에는 없을 수 있는 옵셔널 아티팩트.
+# _verify/필수 load 대상이 아니며, 없으면 빈 DataFrame으로 관용 처리한다.
+OPTIONAL_ARTIFACTS = ["aux_signal_matrix"]
 # 최근 30일 변화 탭을 안정적으로 보여주려면 14개 보관은 부족하다.
 # 영업일 기준 30일 + 수동 실행 여유분을 고려해 기본 45개 버전을 보관한다.
 KEEP_LAST_N = int(os.environ.get("CACHE_KEEP_LAST_N", "45"))
@@ -100,6 +103,9 @@ class LocalStore:
         vdir.mkdir(parents=True, exist_ok=True)
         for name in ARTIFACT_PARQUETS:
             artifacts[name].to_parquet(vdir / f"{name}.parquet", index=False)
+        for name in OPTIONAL_ARTIFACTS:
+            if artifacts.get(name) is not None:
+                artifacts[name].to_parquet(vdir / f"{name}.parquet", index=False)
         (vdir / "data_quality.json").write_text(
             json.dumps(artifacts["data_quality"], ensure_ascii=False, indent=2))
         (vdir / "status.json").write_text(
@@ -117,9 +123,12 @@ class LocalStore:
         return status, arts
 
     def load_artifact(self, cache_version: str, name: str) -> pd.DataFrame:
-        if name not in ARTIFACT_PARQUETS:
+        if name not in ARTIFACT_PARQUETS and name not in OPTIONAL_ARTIFACTS:
             raise ValueError(f"unknown parquet artifact: {name}")
-        return pd.read_parquet(self.root / "versions" / cache_version / f"{name}.parquet")
+        fp = self.root / "versions" / cache_version / f"{name}.parquet"
+        if name in OPTIONAL_ARTIFACTS and not fp.exists():
+            return pd.DataFrame()
+        return pd.read_parquet(fp)
 
     def list_versions(self) -> list[str]:
         vroot = self.root / "versions"
@@ -129,6 +138,15 @@ class LocalStore:
 
     def load_history(self, days: int = 30) -> pd.DataFrame:
         return _history_from_versions(self.load_artifact, self.list_versions(), days=days)
+
+    def load_data_quality(self, cache_version: str | None = None) -> dict:
+        if cache_version is None:
+            p = self.root / "data_status.json"
+            if not p.exists():
+                return {}
+            cache_version = json.loads(p.read_text())["active_cache_version"]
+        fp = self.root / "versions" / cache_version / "data_quality.json"
+        return json.loads(fp.read_text()) if fp.exists() else {}
 
     def last_good_raw(self) -> pd.DataFrame | None:
         p = self.root / "data_status.json"
@@ -164,6 +182,12 @@ class HfDatasetStore:
             artifacts[name].to_parquet(buf, index=False)
             ops.append(CommitOperationAdd(
                 f"versions/{cache_version}/{name}.parquet", buf.getvalue()))
+        for name in OPTIONAL_ARTIFACTS:
+            if artifacts.get(name) is not None:
+                buf = io.BytesIO()
+                artifacts[name].to_parquet(buf, index=False)
+                ops.append(CommitOperationAdd(
+                    f"versions/{cache_version}/{name}.parquet", buf.getvalue()))
         ops.append(CommitOperationAdd(
             f"versions/{cache_version}/data_quality.json",
             json.dumps(artifacts["data_quality"], ensure_ascii=False).encode()))
@@ -194,11 +218,17 @@ class HfDatasetStore:
         return status, arts
 
     def load_artifact(self, cache_version: str, name: str) -> pd.DataFrame:
-        if name not in ARTIFACT_PARQUETS:
+        if name not in ARTIFACT_PARQUETS and name not in OPTIONAL_ARTIFACTS:
             raise ValueError(f"unknown parquet artifact: {name}")
         from huggingface_hub import hf_hub_download
-        fp = hf_hub_download(self.repo_id, f"versions/{cache_version}/{name}.parquet",
-                             repo_type="dataset", token=self.token)
+        from huggingface_hub.utils import EntryNotFoundError
+        try:
+            fp = hf_hub_download(self.repo_id, f"versions/{cache_version}/{name}.parquet",
+                                 repo_type="dataset", token=self.token)
+        except EntryNotFoundError:
+            if name in OPTIONAL_ARTIFACTS:
+                return pd.DataFrame()
+            raise
         return pd.read_parquet(fp)
 
     def list_versions(self) -> list[str]:
@@ -206,6 +236,20 @@ class HfDatasetStore:
 
     def load_history(self, days: int = 30) -> pd.DataFrame:
         return _history_from_versions(self.load_artifact, self.list_versions(), days=days)
+
+    def load_data_quality(self, cache_version: str | None = None) -> dict:
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.utils import EntryNotFoundError
+        try:
+            if cache_version is None:
+                sp = hf_hub_download(self.repo_id, "data_status.json",
+                                     repo_type="dataset", token=self.token)
+                cache_version = json.loads(Path(sp).read_text())["active_cache_version"]
+            fp = hf_hub_download(self.repo_id, f"versions/{cache_version}/data_quality.json",
+                                 repo_type="dataset", token=self.token)
+            return json.loads(Path(fp).read_text())
+        except (EntryNotFoundError, Exception):  # noqa: BLE001
+            return {}
 
     def last_good_raw(self) -> pd.DataFrame | None:
         from huggingface_hub import hf_hub_download
