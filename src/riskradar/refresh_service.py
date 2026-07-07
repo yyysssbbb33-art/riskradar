@@ -18,6 +18,7 @@ from . import aux_config as AC
 from . import aux_indicators
 from . import axis_engine
 from . import credit_episode
+from . import decision_snapshot as DS
 from . import interpretation_engine
 from . import fred_client, pipeline
 from . import telegram_client as tg
@@ -211,6 +212,35 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             log.warning("axis/interpretation failed: %s", e)
             axes, reading_dicts = None, []
 
+        # 3e) 권위 있는 판정 스냅샷 + 안전한 diff.
+        # monthly_view/chart_data 재구성본은 절대 사용하지 않는다. v0.6.2 이전 캐시는 백필하지 않는다.
+        credit_quality = credit_result.to_quality_dict() if credit_result is not None else {}
+        decision_tracking_error = None
+        decision_snap: dict = {}
+        decision_diff: dict = {
+            "status": "unavailable",
+            "previous_cache_version": None,
+            "current_cache_version": cache_version,
+            "summary": {"market": 0, "data_quality": 0, "recovery_gap": 0, "schema_boundary": 0},
+        }
+        try:
+            decision_snap = DS.build_decision_snapshot(
+                cache_version=cache_version,
+                generated_at=started,
+                app_version=__version__,
+                signal_matrix=matrix,
+                aux_matrix=aux_matrix,
+                credit_quality=credit_quality,
+                failed_series=failed,
+                stale_series=stale,
+            )
+            previous_finder = getattr(store, "find_previous_decision_snapshot", None)
+            previous_decision = previous_finder(cache_version) if previous_finder is not None else None
+            decision_diff = DS.compare_decision_snapshots(previous_decision, decision_snap)
+        except Exception as e:  # noqa: BLE001 - 판정 기록 실패가 핵심 데이터 갱신을 막지 않음
+            decision_tracking_error = f"{type(e).__name__}: {e}"
+            log.warning("decision snapshot/diff failed: %s", e)
+
         # 4) artifacts
         artifacts = {
             "raw_fred": _raw_long(raw_by_key, started, set(stale)),
@@ -221,6 +251,8 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             "aux_raw": _aux_raw_long(aux_raw_frames, started),
             "credit_episode_nodes": (credit_result.node_history if credit_result is not None else pd.DataFrame()),
             "credit_episodes": (credit_result.episodes if credit_result is not None else pd.DataFrame()),
+            "decision_snapshot": decision_snap,
+            "decision_diff": decision_diff,
             "data_quality": {
                 "code_version": __version__,
                 "failed_series": failed, "stale_series": stale,
@@ -246,7 +278,17 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                 },
                 "axes": axes,
                 "readings": reading_dicts,
-                "credit_episode": (credit_result.to_quality_dict() if credit_result is not None else {}),
+                "credit_episode": credit_quality,
+                "decision_tracking": {
+                    "snapshot_format_version": decision_snap.get("snapshot_format_version"),
+                    "schemas": decision_snap.get("schemas", {}),
+                    "comparison_status": decision_diff.get("status"),
+                    "previous_cache_version": decision_diff.get("previous_cache_version"),
+                    "summary": decision_diff.get("summary", {}),
+                    "authoritative_history_started": bool(decision_snap.get("authoritative") is True),
+                    "backfilled_pre_v0_6_2": False,
+                    "error": decision_tracking_error,
+                },
                 "ice_history_policy": {
                     "company_bond_window": "최근 공식 FRED 약 3년 자료",
                     "long_history_claims": False,

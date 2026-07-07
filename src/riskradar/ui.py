@@ -34,6 +34,8 @@ KST = ZoneInfo(C.APP_TIMEZONE)
 
 _UI_DATA_COMPATIBLE_VERSIONS = {
     "0.6.1": {"0.6.0", "0.6.1"},
+    # v0.6.2는 기존 시장 판정 산출물을 유지하고 권위 있는 decision snapshot/diff를 추가한다.
+    "0.6.2": {"0.6.0", "0.6.1", "0.6.2"},
 }
 
 
@@ -425,6 +427,46 @@ def _aux_status_df(aux_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols)
 
 
+
+
+def _decision_tracking_markdown(snapshot: DashboardSnapshot) -> str:
+    snap = snapshot.decision_snapshot or {}
+    diff = snapshot.decision_diff or {}
+    if not snap:
+        return (
+            "**권위 있는 판정 기록:** 아직 없음\n\n"
+            "v0.6.2 첫 성공 배치부터 새로 시작합니다. 이전 캐시는 현재 규칙으로 백필하지 않습니다."
+        )
+
+    schemas = snap.get("schemas") or {}
+    summary = diff.get("summary") or {}
+    status_map = {
+        "cold_start": "직전 비교 대상 없음 (정상적인 최초 기록)",
+        "ok": "비교 가능",
+        "schema_boundary": "판정 기준 경계 — 해당 영역 비교 보류",
+        "partial_schema_boundary": "일부 영역만 비교 가능",
+    }
+    lines = [
+        f"- **판정 스냅샷 포맷:** `v{snap.get('snapshot_format_version', '확인 불가')}`",
+        f"- **핵심 상태 규칙:** `{schemas.get('core_state', '확인 불가')}`",
+        f"- **신용 범위·지속 규칙:** `{schemas.get('credit_episode', '확인 불가')}`",
+        f"- **확인지표 방향 규칙:** `{schemas.get('aux_direction', '확인 불가')}`",
+        f"- **직전 비교 대상:** `{diff.get('previous_cache_version') or '없음'}`",
+        f"- **비교 상태:** `{status_map.get(str(diff.get('status')), str(diff.get('status') or '확인 불가'))}`",
+        f"- **탐지 결과:** 시장 변화 `{summary.get('market', 0)}` · 데이터 상태 변화 `{summary.get('data_quality', 0)}` · 복구 공백 경계 `{summary.get('recovery_gap', 0)}` · 판정 기준 경계 `{summary.get('schema_boundary', 0)}`",
+    ]
+
+    events = (diff.get("market_transitions") or []) + (diff.get("recovery_gap_events") or [])
+    if events:
+        lines += ["", "**이번 비교에서 기록된 주요 사건**"]
+        for event in events[:8]:
+            lines.append(f"- {plain_language(str(event.get('message', '')))}")
+    elif diff.get("status") == "cold_start":
+        lines += ["", "첫 권위 있는 스냅샷이므로 이번 배치는 변화 비교를 하지 않습니다."]
+    else:
+        lines += ["", "시장 판정 변화는 기록되지 않았습니다."]
+    return "\n".join(lines)
+
 def _data_generation_info(status: dict | None, data_quality: dict | None) -> dict[str, str]:
     """활성 데이터가 언제·어떤 코드로 만들어졌는지 사용자용으로 정리한다."""
     status = status or {}
@@ -560,6 +602,9 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         "aux_status": _aux_status_df(aux_df),
         "status_json": snapshot.status,
         "data_quality_json": snapshot.data_quality,
+        "decision_tracking": _decision_tracking_markdown(snapshot),
+        "decision_snapshot_json": snapshot.decision_snapshot,
+        "decision_diff_json": snapshot.decision_diff,
     }
 
 
@@ -696,6 +741,11 @@ def build_app():
                 )
             status_summary_component = gr.Markdown(initial["status_summary"])
             status_warning_component = gr.Markdown(initial["status_warning"])
+            with gr.Accordion("판정 기록·변화 진단 보기", open=False):
+                decision_tracking_component = gr.Markdown(initial["decision_tracking"])
+                with gr.Accordion("판정 스냅샷·diff 원본 보기", open=False):
+                    decision_snapshot_json_component = gr.JSON(initial["decision_snapshot_json"])
+                    decision_diff_json_component = gr.JSON(initial["decision_diff_json"])
             with gr.Accordion("확인지표 수집 상세 보기", open=False):
                 aux_status_component = gr.Dataframe(initial["aux_status"], wrap=True, interactive=False)
             with gr.Accordion("원본 상태 정보 보기", open=False):
@@ -737,6 +787,9 @@ def build_app():
             *[chart_components[k] for k in C.SERIES_ORDER],
             status_summary_component,
             status_warning_component,
+            decision_tracking_component,
+            decision_snapshot_json_component,
+            decision_diff_json_component,
             aux_status_component,
             status_json_component,
             data_quality_json_component,
@@ -765,6 +818,9 @@ def build_app():
                 *[payload["charts"][k] for k in C.SERIES_ORDER],
                 payload["status_summary"],
                 payload["status_warning"],
+                payload["decision_tracking"],
+                payload["decision_snapshot_json"],
+                payload["decision_diff_json"],
                 payload["aux_status"],
                 payload["status_json"],
                 payload["data_quality_json"],

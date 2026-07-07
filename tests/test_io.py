@@ -66,10 +66,13 @@ def test_missing_required_no_lastgood_fails(tmp_path):
     assert status["status"] == "failed"
 
 
-def test_retention_prune(tmp_path):
+def test_retention_prune(tmp_path, monkeypatch):
     rb = synth.make_raw_by_key(n=1100)
     store = CS.LocalStore(tmp_path)
-    CS.KEEP_LAST_N = 3
+    # v0.6.2는 날짜+개수 이중 보존 정책이다. 이 테스트는 안전 상한 동작만 격리해 확인한다.
+    monkeypatch.setattr(CS, "KEEP_LAST_N", 3)
+    monkeypatch.setattr(CS, "KEEP_MIN_DAYS", 0)
+    monkeypatch.setattr(CS, "KEEP_MAX_N", 3)
     import time
     for _ in range(5):
         RS.run_refresh(fetcher=_fetcher(rb), store=store, notify=False)

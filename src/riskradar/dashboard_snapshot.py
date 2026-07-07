@@ -28,6 +28,8 @@ class DashboardSnapshot:
     aux_raw: pd.DataFrame
     credit_node_history: pd.DataFrame
     credit_episodes: pd.DataFrame
+    decision_snapshot: dict
+    decision_diff: dict
     history: pd.DataFrame
     history_source: str
     history_error: str | None = None
@@ -65,6 +67,19 @@ def load_dashboard_snapshot(store, days: int = 30) -> DashboardSnapshot:
     credit_node_history = _optional("credit_episode_nodes", "신용 에피소드 노드 기록")
     credit_episodes = _optional("credit_episodes", "신용 에피소드 기록")
 
+    def _optional_json(name: str, label: str) -> dict:
+        loader = getattr(store, "load_json_artifact", None)
+        if loader is None:
+            return {}
+        try:
+            return loader(cache_version, name)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{label} 읽기 실패: {type(e).__name__}: {e}")
+            return {}
+
+    decision_snapshot = _optional_json("decision_snapshot", "판정 스냅샷")
+    decision_diff = _optional_json("decision_diff", "판정 변화 기록")
+
     history = reconstruct_history_from_chart_data(arts.get("chart_data", pd.DataFrame()), days=days)
     history_source = "과거 원자료 재구성" if not history.empty else "저장 스냅샷"
     history_error = None
@@ -84,6 +99,8 @@ def load_dashboard_snapshot(store, days: int = 30) -> DashboardSnapshot:
         aux_raw=aux_raw,
         credit_node_history=credit_node_history,
         credit_episodes=credit_episodes,
+        decision_snapshot=decision_snapshot,
+        decision_diff=decision_diff,
         history=history,
         history_source=history_source,
         history_error=history_error,

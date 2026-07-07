@@ -27,9 +27,15 @@ ARTIFACT_PARQUETS = ["raw_fred", "signal_matrix", "synced_snapshot", "chart_data
 # 하위호환: 옛 캐시 버전에는 없을 수 있는 옵셔널 아티팩트.
 # _verify/필수 load 대상이 아니며, 없으면 빈 DataFrame으로 관용 처리한다.
 OPTIONAL_ARTIFACTS = ["aux_signal_matrix", "aux_raw", "credit_episode_nodes", "credit_episodes"]
-# 최근 30일 변화 탭을 안정적으로 보여주려면 14개 보관은 부족하다.
-# 영업일 기준 30일 + 수동 실행 여유분을 고려해 기본 45개 버전을 보관한다.
+# v0.6.2부터 시작하는 권위 있는 판정 기록. 옛 버전은 백필하지 않는다.
+OPTIONAL_JSON_ARTIFACTS = ["decision_snapshot", "decision_diff"]
+# 최근 흐름·diff 감사를 위해 날짜와 개수를 함께 본다.
+# - 최근 KEEP_MIN_DAYS 안의 버전은 우선 보존
+# - 실행이 드물어도 최소 KEEP_LAST_N개는 보존
+# - 수동 refresh 폭주로 저장소가 무한히 커지지 않도록 KEEP_MAX_N 상한 적용
 KEEP_LAST_N = int(os.environ.get("CACHE_KEEP_LAST_N", "45"))
+KEEP_MIN_DAYS = int(os.environ.get("CACHE_KEEP_MIN_DAYS", "90"))
+KEEP_MAX_N = int(os.environ.get("CACHE_KEEP_MAX_N", "180"))
 
 
 # ---------------------------------------------------------------- common ----
@@ -56,6 +62,23 @@ def _safe_version_sort(cache_version: str):
 
 
 
+
+
+
+def _versions_to_prune(versions: list[str]) -> list[str]:
+    """날짜+개수 이중 기준으로 삭제할 cache_version을 반환한다."""
+    ordered = sorted(set(versions), key=_safe_version_sort)
+    valid = [v for v in ordered if _safe_version_sort(v) != datetime.min]
+    if not valid:
+        return []
+    latest_dt = _version_dt(valid[-1])
+    cutoff = latest_dt - timedelta(days=max(0, KEEP_MIN_DAYS))
+    keep = {v for v in valid if _version_dt(v) >= cutoff}
+    keep.update(valid[-max(1, KEEP_LAST_N):])
+    # 안전 상한은 pathological refresh 폭주 방지용이다. 초과 시 가장 최근 버전을 우선한다.
+    if KEEP_MAX_N > 0 and len(keep) > KEEP_MAX_N:
+        keep = set(valid[-KEEP_MAX_N:])
+    return [v for v in valid if v not in keep]
 
 def _actual_success_aux_row(df: pd.DataFrame | None, key: str) -> pd.DataFrame:
     """보조지표 캐시에서 '실제 정상 수집' 행만 반환한다.
@@ -139,6 +162,10 @@ class LocalStore:
         for name in OPTIONAL_ARTIFACTS:
             if artifacts.get(name) is not None:
                 artifacts[name].to_parquet(vdir / f"{name}.parquet", index=False)
+        for name in OPTIONAL_JSON_ARTIFACTS:
+            if artifacts.get(name) is not None:
+                (vdir / f"{name}.json").write_text(
+                    json.dumps(artifacts[name], ensure_ascii=False, indent=2))
         (vdir / "data_quality.json").write_text(
             json.dumps(artifacts["data_quality"], ensure_ascii=False, indent=2))
         (vdir / "status.json").write_text(
@@ -173,6 +200,25 @@ class LocalStore:
         if name in OPTIONAL_ARTIFACTS and not fp.exists():
             return pd.DataFrame()
         return pd.read_parquet(fp)
+
+    def load_json_artifact(self, cache_version: str, name: str) -> dict:
+        if name not in OPTIONAL_JSON_ARTIFACTS:
+            raise ValueError(f"unknown json artifact: {name}")
+        fp = self.root / "versions" / cache_version / f"{name}.json"
+        return json.loads(fp.read_text()) if fp.exists() else {}
+
+    def find_previous_decision_snapshot(self, before_version: str | None = None) -> dict | None:
+        """이전 권위 있는 decision_snapshot만 찾는다. 옛 캐시 재구성/백필은 하지 않는다."""
+        for version in reversed(self.list_versions()):
+            if before_version is not None and _safe_version_sort(version) >= _safe_version_sort(before_version):
+                continue
+            fp = self.root / "versions" / version / "decision_snapshot.json"
+            if not fp.exists():
+                continue
+            snap = json.loads(fp.read_text())
+            if snap.get("authoritative") is True:
+                return snap
+        return None
 
     def list_versions(self) -> list[str]:
         vroot = self.root / "versions"
@@ -239,9 +285,9 @@ class LocalStore:
         return None
 
     def _prune(self):
-        vs = sorted((self.root / "versions").iterdir())
-        for old in vs[:-KEEP_LAST_N]:
-            shutil.rmtree(old, ignore_errors=True)
+        versions = self.list_versions()
+        for old in _versions_to_prune(versions):
+            shutil.rmtree(self.root / "versions" / old, ignore_errors=True)
 
 
 # ------------------------------------------------------------- hf dataset ---
@@ -269,6 +315,11 @@ class HfDatasetStore:
                 artifacts[name].to_parquet(buf, index=False)
                 ops.append(CommitOperationAdd(
                     f"versions/{cache_version}/{name}.parquet", buf.getvalue()))
+        for name in OPTIONAL_JSON_ARTIFACTS:
+            if artifacts.get(name) is not None:
+                ops.append(CommitOperationAdd(
+                    f"versions/{cache_version}/{name}.json",
+                    json.dumps(artifacts[name], ensure_ascii=False, indent=2).encode()))
         ops.append(CommitOperationAdd(
             f"versions/{cache_version}/data_quality.json",
             json.dumps(artifacts["data_quality"], ensure_ascii=False).encode()))
@@ -329,6 +380,44 @@ class HfDatasetStore:
                 return pd.DataFrame()
             raise
         return pd.read_parquet(fp)
+
+    def load_json_artifact(self, cache_version: str, name: str) -> dict:
+        if name not in OPTIONAL_JSON_ARTIFACTS:
+            raise ValueError(f"unknown json artifact: {name}")
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.utils import EntryNotFoundError
+        try:
+            fp = hf_hub_download(
+                self.repo_id, f"versions/{cache_version}/{name}.json",
+                repo_type="dataset", token=self.token,
+            )
+        except EntryNotFoundError:
+            return {}
+        return json.loads(Path(fp).read_text())
+
+    def find_previous_decision_snapshot(self, before_version: str | None = None) -> dict | None:
+        """이전 권위 있는 decision_snapshot만 찾는다. 옛 캐시는 백필하지 않는다."""
+        try:
+            files = self.api.list_repo_files(self.repo_id, repo_type="dataset")
+        except Exception as e:  # noqa: BLE001
+            log.warning("decision snapshot file listing failed: %s", e)
+            return None
+        versions = sorted({
+            p.split("/")[1]
+            for p in files
+            if p.startswith("versions/") and p.endswith("/decision_snapshot.json") and len(p.split("/")) >= 3
+        }, key=_safe_version_sort)
+        for version in reversed(versions):
+            if before_version is not None and _safe_version_sort(version) >= _safe_version_sort(before_version):
+                continue
+            try:
+                snap = self.load_json_artifact(version, "decision_snapshot")
+            except Exception as e:  # noqa: BLE001
+                log.warning("skip decision snapshot version %s: %s", version, e)
+                continue
+            if snap.get("authoritative") is True:
+                return snap
+        return None
 
     def list_versions(self) -> list[str]:
         return _versions_from_paths(self.api.list_repo_files(self.repo_id, repo_type="dataset"))
@@ -415,7 +504,7 @@ class HfDatasetStore:
         try:
             files = self.api.list_repo_files(self.repo_id, repo_type="dataset")
             versions = _versions_from_paths(files)
-            for old in versions[:-KEEP_LAST_N]:
+            for old in _versions_to_prune(versions):
                 self.api.delete_folder(f"versions/{old}", self.repo_id,
                                        repo_type="dataset",
                                        commit_message=f"prune {old}")
