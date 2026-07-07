@@ -11,7 +11,7 @@ import gradio as gr
 from fastapi import FastAPI
 
 from riskradar import cache_store
-from riskradar.ui import build_app
+from riskradar.ui import APP_CSS, build_app
 
 app = FastAPI(title="RiskRadar")
 
@@ -29,7 +29,7 @@ def status():
         return {"status": "no_cache", "error": str(e)}
 
 
-app = gr.mount_gradio_app(app, build_app(), path="/")
+app = gr.mount_gradio_app(app, build_app(), path="/", css=APP_CSS)
 
 if __name__ == "__main__":
     import uvicorn

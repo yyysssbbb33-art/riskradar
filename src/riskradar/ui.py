@@ -25,6 +25,12 @@ from .aux_detail_view import render_aux_detail
 from .indicator_detail_view import render_indicator_detail
 from .relationship_guide import RELATIONSHIP_GUIDE
 from .today_view import render_credit_episode_markdown, render_today_markdown, render_today_summary_markdown
+from .overview_view import (
+    render_core_cards_html, render_credit_range_map_html, render_data_health_badge,
+    render_evidence_balance_markdown, render_next_checks_markdown,
+    render_recent_changes_markdown, render_remaining_changes_markdown,
+    render_today_one_line_markdown,
+)
 from .monthly_view import reconstruct_history_from_chart_data, render_monthly_markdown
 from .dashboard_snapshot import DashboardSnapshot, load_dashboard_snapshot
 from .version import __version__
@@ -32,10 +38,41 @@ from .version import __version__
 KST = ZoneInfo(C.APP_TIMEZONE)
 
 
+APP_CSS = r"""
+.rr-card-grid-wrap { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:8px 0 10px; }
+.rr-card { border:1px solid var(--border-color-primary); border-radius:14px; padding:14px; background:var(--background-fill-primary); }
+.rr-card-name { font-weight:700; line-height:1.35; min-height:2.7em; }
+.rr-card-state { font-size:1.05rem; font-weight:700; margin:8px 0 12px; }
+.rr-card-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.rr-card-grid div { display:flex; flex-direction:column; min-width:0; }
+.rr-card-grid small, .rr-observed, .rr-muted, .rr-credit-node small, .rr-credit-summary small { opacity:.72; }
+.rr-card-grid strong { font-size:.95rem; overflow-wrap:anywhere; }
+.rr-spark { font-family:monospace; letter-spacing:1px; font-size:1.05rem; margin-top:12px; overflow:hidden; white-space:nowrap; }
+.rr-observed { font-size:.8rem; margin-top:7px; }
+.rr-muted, .rr-empty { border:1px dashed var(--border-color-primary); border-radius:12px; padding:12px; margin:8px 0; }
+.rr-credit-map { display:grid; gap:12px; }
+.rr-credit-summary, .rr-credit-lens { display:flex; flex-direction:column; gap:4px; border:1px solid var(--border-color-primary); border-radius:14px; padding:14px; }
+.rr-credit-group { border:1px solid var(--border-color-primary); border-radius:14px; padding:12px; }
+.rr-group-title { font-weight:700; margin-bottom:10px; }
+.rr-credit-row { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.rr-credit-row-single { grid-template-columns:minmax(180px,1fr); max-width:280px; }
+.rr-credit-node { display:flex; flex-direction:column; gap:5px; padding:11px; border-radius:10px; background:var(--background-fill-secondary); }
+.rr-credit-state { font-weight:700; }
+@media (max-width:640px) {
+  .rr-card-grid-wrap { grid-template-columns:1fr; }
+  .rr-card-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .rr-credit-row { grid-template-columns:1fr; }
+  .rr-credit-row-single { max-width:none; }
+}
+"""
+
+
 _UI_DATA_COMPATIBLE_VERSIONS = {
     "0.6.1": {"0.6.0", "0.6.1"},
     # v0.6.2는 기존 시장 판정 산출물을 유지하고 권위 있는 decision snapshot/diff를 추가한다.
     "0.6.2": {"0.6.0", "0.6.1", "0.6.2"},
+    # v0.7.0은 v0.6.2 판정 산출물을 그대로 읽는 변화 중심 UI다.
+    "0.7.0": {"0.6.2", "0.7.0"},
 }
 
 
@@ -50,10 +87,10 @@ GUIDE_INTRO = r"""
 
 RiskRadar는 미국 시장을 **주식시장 흔들림·기업 자금 부담·경기 흐름·금리 움직임**으로 나눠 보는 계기판입니다. 하나의 점수로 시장을 단정하지 않고, 지금 어떤 부분이 움직이는지와 무엇을 더 확인해야 하는지 보여줍니다.
 
-1. **현재 상황**에서 6개 핵심 지표의 상태와 지금 뜻을 봅니다.
-2. **기업 신용 범위와 지속**에서 HY·BBB·A·CP 중 어디까지 움직이고 무엇이 남아 있는지 봅니다.
-3. **오늘의 해석**에서 여러 지표를 같이 봤을 때 어떤 모습인지 확인합니다.
-4. **지난 30일 흐름**에서 한 달 동안 어떤 변화가 생겼다가 사라졌고 무엇이 남았는지 봅니다.
+1. **한눈에 보기**에서 오늘 한 줄, 최근 갱신 변화, 아직 남아 있는 변화, 다음 확인을 봅니다.
+2. **기업 신용**에서 HY·BBB·A·CP 중 어디까지 움직이고 무엇이 남아 있는지 범위 지도로 봅니다.
+3. **흐름과 차트**에서 지난 30일 과정과 선택 지표의 실제 원자료 흐름을 봅니다.
+4. **비교**에서 전체 핵심 지표와 같은 날짜 기준 결과를 확인합니다.
 5. **지표 설명**에서 핵심 6개·HY-BBB 렌즈·확인지표 5개·외부 참고 2개의 읽는 법을 자세히 봅니다.
 
 ### `최근 3년·5년·10년 중 현재 위치` 읽는 법
@@ -580,8 +617,24 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
     history_source_md = f"**현재 30일 데이터 기준:** {snapshot.history_source}"
     if snapshot.history_error:
         history_source_md += f"\n\n⚠️ {snapshot.history_error}"
+    core_cards_all = render_core_cards_html(
+        arts["signal_matrix"], arts.get("chart_data", pd.DataFrame()), changes_only=False
+    )
+    core_cards_changed = render_core_cards_html(
+        arts["signal_matrix"], arts.get("chart_data", pd.DataFrame()), changes_only=True
+    )
     return {
         "banner": _loaded_banner(snapshot),
+        "data_health": render_data_health_badge(snapshot.status, snapshot.data_quality, snapshot.decision_diff, snapshot.load_errors),
+        "today_one_line": render_today_one_line_markdown(effective_dq),
+        "recent_changes": render_recent_changes_markdown(snapshot.decision_diff),
+        "remaining_changes": render_remaining_changes_markdown(snapshot.decision_snapshot, effective_dq),
+        "next_checks": render_next_checks_markdown(effective_dq, snapshot.decision_snapshot),
+        "evidence_balance": render_evidence_balance_markdown(effective_dq, aux_df),
+        "core_cards_all": core_cards_all,
+        "core_cards_changed": core_cards_changed,
+        "core_cards_state": {"all": core_cards_all, "changed": core_cards_changed},
+        "credit_map": render_credit_range_map_html(effective_dq),
         "board": _board_df(arts["signal_matrix"]),
         "details": details,
         "aux_details": aux_details,
@@ -597,6 +650,7 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         "matrix": _signal_matrix_df(arts["signal_matrix"]),
         "matrix_detail": _signal_matrix_detail_df(arts["signal_matrix"]),
         "charts": {key: _chart_data(arts, key) for key in C.SERIES_ORDER},
+        "chart_data": arts.get("chart_data", pd.DataFrame()),
         "status_summary": summary_md,
         "status_warning": warning_md,
         "aux_status": _aux_status_df(aux_df),
@@ -629,116 +683,14 @@ def build_app():
     with gr.Blocks(title="RiskRadar") as demo:
         gr.Markdown("# RiskRadar — 미국 시장 흐름 신호판")
         gr.Markdown(
-            "핵심 6개 지표와 기업 신용 범위·지속을 먼저 보여주고, "
-            "읽는 법·가이드·운영 세부는 필요한 경우에만 펼쳐봅니다."
+            "**최근 무엇이 달라졌는지 → 아직 무엇이 남아 있는지 → 다음에 무엇을 볼지**를 먼저 보여줍니다. "
+            "세부 근거와 가이드는 필요한 경우에만 펼쳐봅니다."
         )
+        data_health_component = gr.Markdown(initial["data_health"])
         reload_button = gr.Button("HF Dataset 최신 데이터 다시 읽기", variant="secondary")
         with gr.Accordion("현재 데이터 버전·재조회 정보 보기", open=False):
             loaded_banner = gr.Markdown(initial["banner"])
-
-        with gr.Tab("현재 상황"):
-            with gr.Accordion("현재 상황 읽는 법", open=False):
-                gr.Markdown(BOARD_HELP)
-            with gr.Accordion("용어·표현 참고하기", open=False):
-                gr.Markdown(EASY_GLOSSARY)
-
-            board_component = gr.Dataframe(initial["board"], wrap=True, interactive=False)
-            credit_component = gr.Markdown(initial["credit"])
-
-            with gr.Accordion("핵심 6개 지표별 상세 설명 보기", open=False):
-                gr.Markdown(
-                    "궁금한 지표만 펼치면 **현재 데이터와 연결한 해석 → 현재 연결된 조합 → 상세 설명** "
-                    "순서로 볼 수 있습니다."
-                )
-                detail_components = {}
-                for key in C.SERIES_ORDER:
-                    with gr.Accordion(f"{core_name(key)} 상세 설명", open=False):
-                        detail_components[key] = gr.Markdown(
-                            initial["details"].get(key, "현재 데이터를 읽을 수 없습니다.")
-                        )
-
-            with gr.Accordion("지표를 함께 본 전체 해석 보기", open=False):
-                combined_today_component = gr.Markdown(initial["today"])
-
-        with gr.Tab("오늘의 해석"):
-            today_summary_component = gr.Markdown(initial["today_summary"])
-            with gr.Accordion("전체 근거·확인지표·다른 경우의 해석 보기", open=False):
-                today_component = gr.Markdown(initial["today"])
-
-            with gr.Accordion("신용 렌즈·확인지표 상세 가이드 보기", open=False):
-                gr.Markdown(
-                    "HY-BBB는 별도 시장이 아닌 등급차별 렌즈입니다. 확인지표는 원인·범위·다른 시장을 보고, "
-                    "외부 참고는 공식 종합지표가 같은 그림인지 봅니다."
-                )
-                with gr.Accordion(f"{lens_name('HY_BBB')} 상세 설명", open=False):
-                    lens_detail_component = gr.Markdown(plain_language(HY_BBB_CARD))
-                aux_detail_components = {}
-                for key in AC.VISIBLE_AUX_ORDER:
-                    with gr.Accordion(f"{aux_name(key)} 상세 설명", open=False):
-                        aux_detail_components[key] = gr.Markdown(
-                            initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
-                        )
-
-        with gr.Tab("지난 30일 흐름"):
-            with gr.Accordion("지난 30일 흐름 읽는 법", open=False):
-                gr.Markdown(HISTORY_HELP)
-            with gr.Accordion("데이터 구성 방식·주의사항 보기", open=False):
-                history_source_component = gr.Markdown(initial["history_source"])
-
-            monthly_component = gr.Markdown(initial["monthly"])
-            gr.Markdown("---\n\n## 지표별 30일 흐름")
-            selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
-            history_state = gr.State(initial["history"])
-            with gr.Accordion("선택 지표 읽는 법 보기", open=False):
-                interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
-            hist_plot = gr.LinePlot(
-                value=initial["history_plot"], x="날짜", y="최신값",
-                title="선택 지표의 지난 30일 값 변화",
-            )
-            hist_table = gr.Dataframe(initial["history_table"], wrap=True, interactive=False)
-
-            def _history_selection(key, history):
-                history = history if isinstance(history, pd.DataFrame) else pd.DataFrame(history or [])
-                return (
-                    plain_language(get_interpretation_card(key)),
-                    _history_plot_data(history, key),
-                    _history_table(history, key),
-                )
-
-            selector.change(
-                fn=_history_selection,
-                inputs=[selector, history_state],
-                outputs=[interpretation_card, hist_plot, hist_table],
-            )
-
-        with gr.Tab("같은 날짜 비교"):
-            with gr.Accordion("같은 날짜 비교 읽는 법", open=False):
-                gr.Markdown(SYNCED_HELP)
-            synced_component = gr.Dataframe(initial["synced"], interactive=False)
-
-        with gr.Tab("전체 지표 비교"):
-            with gr.Accordion("전체 지표 비교 읽는 법", open=False):
-                gr.Markdown(SIGNAL_MATRIX_HELP)
-            matrix_component = gr.Dataframe(initial["matrix"], wrap=True, interactive=False)
-            with gr.Accordion("지표별 지금 뜻·표시 이유 보기", open=False):
-                matrix_detail_component = gr.Dataframe(initial["matrix_detail"], wrap=True, interactive=False)
-
-        chart_components = {}
-        with gr.Tab("차트"):
-            with gr.Accordion("차트 읽는 법", open=False):
-                gr.Markdown(CHART_HELP)
-            for key in C.SERIES_ORDER:
-                chart_components[key] = gr.LinePlot(
-                    value=initial["charts"][key], x="날짜", y="값",
-                    title=f"{core_name(key)} 원자료 흐름",
-                )
-
-        with gr.Tab("데이터 상태"):
-            with gr.Accordion("이 탭에서 보는 정보", open=False):
-                gr.Markdown(
-                    "데이터 버전, ICE 회사채 자료 범위, 신용 범위·지속 산출물, "
-                    "확인지표 수집 실패와 과거값 사용 여부를 확인하는 운영 점검용 화면입니다."
-                )
+        with gr.Accordion("데이터 상태·운영 진단 보기", open=False):
             status_summary_component = gr.Markdown(initial["status_summary"])
             status_warning_component = gr.Markdown(initial["status_warning"])
             with gr.Accordion("판정 기록·변화 진단 보기", open=False):
@@ -751,6 +703,119 @@ def build_app():
             with gr.Accordion("원본 상태 정보 보기", open=False):
                 status_json_component = gr.JSON(initial["status_json"])
                 data_quality_json_component = gr.JSON(initial["data_quality_json"])
+
+        with gr.Tab("한눈에 보기"):
+            today_one_line_component = gr.Markdown(initial["today_one_line"])
+            recent_changes_component = gr.Markdown(initial["recent_changes"])
+            with gr.Row():
+                remaining_changes_component = gr.Markdown(initial["remaining_changes"])
+                next_checks_component = gr.Markdown(initial["next_checks"])
+            evidence_balance_component = gr.Markdown(initial["evidence_balance"])
+
+            gr.Markdown("---\n\n## 핵심 지표 빠르게 보기")
+            changes_only = gr.Checkbox(value=True, label="변화 있는 항목만 보기")
+            core_cards_state = gr.State(initial["core_cards_state"])
+            core_cards_component = gr.HTML(initial["core_cards_changed"])
+
+            def _toggle_core_cards(only_changes, cards):
+                cards = cards or {}
+                return cards.get("changed" if only_changes else "all", "")
+
+            changes_only.change(
+                fn=_toggle_core_cards,
+                inputs=[changes_only, core_cards_state],
+                outputs=core_cards_component,
+                queue=False,
+            )
+
+            with gr.Accordion("전체 핵심 지표 표 보기", open=False):
+                with gr.Accordion("현재 상황 읽는 법", open=False):
+                    gr.Markdown(BOARD_HELP)
+                with gr.Accordion("용어·표현 참고하기", open=False):
+                    gr.Markdown(EASY_GLOSSARY)
+                board_component = gr.Dataframe(initial["board"], wrap=True, interactive=False)
+
+            with gr.Accordion("핵심 6개 지표별 상세 설명 보기", open=False):
+                detail_components = {}
+                for key in C.SERIES_ORDER:
+                    with gr.Accordion(f"{core_name(key)} 상세 설명", open=False):
+                        detail_components[key] = gr.Markdown(
+                            initial["details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
+
+            with gr.Accordion("전체 근거·확인지표·다른 경우의 해석 보기", open=False):
+                today_component = gr.Markdown(initial["today"])
+
+        with gr.Tab("기업 신용"):
+            gr.Markdown("## 기업 신용 범위 지도")
+            gr.Markdown("화살표로 순서를 가정하지 않고, **어느 실제 시장이 참여하고 있는지**만 보여줍니다.")
+            credit_map_component = gr.HTML(initial["credit_map"])
+            with gr.Accordion("기업 신용 범위·지속 상세 결과 보기", open=False):
+                credit_component = gr.Markdown(initial["credit"])
+            with gr.Accordion("신용 렌즈·확인지표 상세 가이드 보기", open=False):
+                with gr.Accordion(f"{lens_name('HY_BBB')} 상세 설명", open=False):
+                    gr.Markdown(plain_language(HY_BBB_CARD))
+                aux_detail_components = {}
+                for key in AC.VISIBLE_AUX_ORDER:
+                    with gr.Accordion(f"{aux_name(key)} 상세 설명", open=False):
+                        aux_detail_components[key] = gr.Markdown(
+                            initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
+
+        with gr.Tab("흐름과 차트"):
+            monthly_component = gr.Markdown(initial["monthly"])
+            with gr.Accordion("지난 30일 흐름 읽는 법", open=False):
+                gr.Markdown(HISTORY_HELP)
+            with gr.Accordion("데이터 구성 방식·주의사항 보기", open=False):
+                history_source_component = gr.Markdown(initial["history_source"])
+
+            gr.Markdown("---\n\n## 지표별 흐름")
+            selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
+            history_state = gr.State(initial["history"])
+            chart_data_state = gr.State(initial["chart_data"])
+            with gr.Accordion("선택 지표 읽는 법 보기", open=False):
+                interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
+            hist_plot = gr.LinePlot(
+                value=initial["history_plot"], x="날짜", y="최신값",
+                title="선택 지표의 지난 30일 값 변화",
+            )
+            with gr.Accordion("차트 읽는 법", open=False):
+                gr.Markdown(CHART_HELP)
+            selected_chart = gr.LinePlot(
+                value=initial["charts"][default_key], x="날짜", y="값",
+                title="선택 지표의 전체 원자료 흐름",
+            )
+            with gr.Accordion("지난 30일 표 보기", open=False):
+                hist_table = gr.Dataframe(initial["history_table"], wrap=True, interactive=False)
+
+            def _history_selection(key, history, chart_data):
+                history = history if isinstance(history, pd.DataFrame) else pd.DataFrame(history or [])
+                chart_data = chart_data if isinstance(chart_data, pd.DataFrame) else pd.DataFrame(chart_data or [])
+                return (
+                    plain_language(get_interpretation_card(key)),
+                    _history_plot_data(history, key),
+                    _history_table(history, key),
+                    _chart_data({"chart_data": chart_data}, key),
+                )
+
+            selector.change(
+                fn=_history_selection,
+                inputs=[selector, history_state, chart_data_state],
+                outputs=[interpretation_card, hist_plot, hist_table, selected_chart],
+            )
+
+        with gr.Tab("비교"):
+            gr.Markdown("## 전체 지표 비교")
+            with gr.Accordion("전체 지표 비교 읽는 법", open=False):
+                gr.Markdown(SIGNAL_MATRIX_HELP)
+            matrix_component = gr.Dataframe(initial["matrix"], wrap=True, interactive=False)
+            with gr.Accordion("지표별 지금 뜻·표시 이유 보기", open=False):
+                matrix_detail_component = gr.Dataframe(initial["matrix_detail"], wrap=True, interactive=False)
+
+            gr.Markdown("---\n\n## 같은 날짜 비교")
+            with gr.Accordion("같은 날짜 비교 읽는 법", open=False):
+                gr.Markdown(SYNCED_HELP)
+            synced_component = gr.Dataframe(initial["synced"], interactive=False)
 
         with gr.Tab("지표 설명"):
             gr.Markdown(GUIDE_INTRO)
@@ -768,23 +833,8 @@ def build_app():
             gr.Markdown(plain_language(RELATIONSHIP_GUIDE))
 
         reload_outputs = [
+            data_health_component,
             loaded_banner,
-            board_component,
-            credit_component,
-            *[detail_components[k] for k in C.SERIES_ORDER],
-            combined_today_component,
-            today_summary_component,
-            today_component,
-            *[aux_detail_components[k] for k in AC.VISIBLE_AUX_ORDER],
-            history_source_component,
-            monthly_component,
-            history_state,
-            hist_plot,
-            hist_table,
-            synced_component,
-            matrix_component,
-            matrix_detail_component,
-            *[chart_components[k] for k in C.SERIES_ORDER],
             status_summary_component,
             status_warning_component,
             decision_tracking_component,
@@ -793,29 +843,38 @@ def build_app():
             aux_status_component,
             status_json_component,
             data_quality_json_component,
+            today_one_line_component,
+            recent_changes_component,
+            remaining_changes_component,
+            next_checks_component,
+            evidence_balance_component,
+            core_cards_state,
+            core_cards_component,
+            board_component,
+            *[detail_components[k] for k in C.SERIES_ORDER],
+            today_component,
+            credit_map_component,
+            credit_component,
+            *[aux_detail_components[k] for k in AC.VISIBLE_AUX_ORDER],
+            history_source_component,
+            monthly_component,
+            history_state,
+            chart_data_state,
+            hist_plot,
+            hist_table,
+            selected_chart,
+            matrix_component,
+            matrix_detail_component,
+            synced_component,
         ]
 
-        def _reload_latest(selected_key):
+        def _reload_latest(selected_key, only_changes):
             snap = load_dashboard_snapshot(store)
             payload = _dynamic_payload(snap, selected_key or default_key, store)
+            cards = payload["core_cards_changed"] if only_changes else payload["core_cards_all"]
             return (
+                payload["data_health"],
                 payload["banner"],
-                payload["board"],
-                payload["credit"],
-                *[payload["details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in C.SERIES_ORDER],
-                payload["today"],
-                payload["today_summary"],
-                payload["today"],
-                *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in AC.VISIBLE_AUX_ORDER],
-                payload["history_source"],
-                payload["monthly"],
-                payload["history"],
-                payload["history_plot"],
-                payload["history_table"],
-                payload["synced"],
-                payload["matrix"],
-                payload["matrix_detail"],
-                *[payload["charts"][k] for k in C.SERIES_ORDER],
                 payload["status_summary"],
                 payload["status_warning"],
                 payload["decision_tracking"],
@@ -824,11 +883,33 @@ def build_app():
                 payload["aux_status"],
                 payload["status_json"],
                 payload["data_quality_json"],
+                payload["today_one_line"],
+                payload["recent_changes"],
+                payload["remaining_changes"],
+                payload["next_checks"],
+                payload["evidence_balance"],
+                payload["core_cards_state"],
+                cards,
+                payload["board"],
+                *[payload["details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in C.SERIES_ORDER],
+                payload["today"],
+                payload["credit_map"],
+                payload["credit"],
+                *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in AC.VISIBLE_AUX_ORDER],
+                payload["history_source"],
+                payload["monthly"],
+                payload["history"],
+                payload["chart_data"],
+                payload["history_plot"],
+                payload["history_table"],
+                payload["charts"][selected_key or default_key],
+                payload["matrix"],
+                payload["matrix_detail"],
+                payload["synced"],
             )
 
-        # Space 프로세스 시작 시 한 번 읽고 고정하지 않는다.
-        # 브라우저가 페이지를 열 때마다, 그리고 사용자가 버튼을 누를 때마다 최신 포인터를 다시 읽는다.
-        demo.load(fn=_reload_latest, inputs=[selector], outputs=reload_outputs, queue=False)
-        reload_button.click(fn=_reload_latest, inputs=[selector], outputs=reload_outputs, queue=False)
+        demo.load(fn=_reload_latest, inputs=[selector, changes_only], outputs=reload_outputs, queue=False)
+        reload_button.click(fn=_reload_latest, inputs=[selector, changes_only], outputs=reload_outputs, queue=False)
 
     return demo
+
