@@ -24,12 +24,24 @@ from .credit_lens_card import HY_BBB_CARD
 from .aux_detail_view import render_aux_detail
 from .indicator_detail_view import render_indicator_detail
 from .relationship_guide import RELATIONSHIP_GUIDE
-from .today_view import render_credit_episode_markdown, render_today_markdown
+from .today_view import render_credit_episode_markdown, render_today_markdown, render_today_summary_markdown
 from .monthly_view import reconstruct_history_from_chart_data, render_monthly_markdown
 from .dashboard_snapshot import DashboardSnapshot, load_dashboard_snapshot
 from .version import __version__
 
 KST = ZoneInfo(C.APP_TIMEZONE)
+
+
+_UI_DATA_COMPATIBLE_VERSIONS = {
+    "0.6.1": {"0.6.0", "0.6.1"},
+}
+
+
+def _is_compatible_data_code_version(data_version: str, ui_version: str = __version__) -> bool:
+    """UI-only 패치가 직전 데이터 산출물과 호환되는지 확인한다."""
+    if data_version == ui_version:
+        return True
+    return data_version in _UI_DATA_COMPATIBLE_VERSIONS.get(ui_version, set())
 
 GUIDE_INTRO = r"""
 ## RiskRadar를 읽는 순서
@@ -154,22 +166,23 @@ def _one_line_interpretation(row: pd.Series) -> str:
 
 
 def _board_df(matrix: pd.DataFrame) -> pd.DataFrame:
+    """현재 상황 탭의 첫 화면용 압축 표.
+
+    해석 문장과 판정 근거는 아래 상세 아코디언에서 보여주고, 첫 화면에는
+    사용자가 지금 상태를 빠르게 훑는 데 필요한 값만 남긴다.
+    """
     rows = []
     for _, r in matrix.iterrows():
         rows.append({
             "지표": core_name(str(r["key"])),
             "상태": state_name(str(r.get("state_code", "")), str(r.get("state_label", "")), drop=bool(r.get("drop_flag", False)), key=str(r.get("key", ""))),
             "최신값": fmt_value(r["latest_value"], r["value_unit"]),
-            "관측일": r["latest_observed_date"],
-            "경과일": _days_since(r["latest_observed_date"]),
             LABEL_1M: fmt_change(r["change_20obs"], r["change_unit"]),
             LABEL_3M: fmt_change(r["change_60obs"], r["change_unit"]),
             LABEL_3Y: fmt_pct(r.get("percentile_3y")),
             LABEL_5Y: fmt_pct(r.get("percentile_5y")),
             LABEL_10Y: fmt_pct(r.get("percentile_10y")),
-            "빠르게 내림": "⚠︎" if r["drop_flag"] else "",
-            "지금 뜻": _one_line_interpretation(r),
-            "왜 이렇게 표시됐나": plain_language(str(r["state_reason"])),
+            "관측일": r["latest_observed_date"],
         })
     return pd.DataFrame(rows)
 
@@ -241,20 +254,37 @@ def _history_table(history: pd.DataFrame, key: str) -> pd.DataFrame:
 
 
 def _signal_matrix_df(matrix: pd.DataFrame) -> pd.DataFrame:
+    """전체 지표 비교 탭의 첫 화면용 압축 표."""
     rows = []
     for _, r in matrix.iterrows():
         rows.append({
             "지표": core_name(str(r["key"])),
             "무엇을 보는 지표": axis_name(str(r["axis"])),
-            "관측일": r["latest_observed_date"],
+            "상태": state_name(str(r.get("state_code", "")), str(r.get("state_label", "")), drop=bool(r.get("drop_flag", False)), key=str(r.get("key", ""))),
             "최신값": fmt_value(r["latest_value"], r["value_unit"]),
             LABEL_1M: fmt_change(r["change_20obs"], r["change_unit"]),
             LABEL_3M: fmt_change(r["change_60obs"], r["change_unit"]),
             LABEL_3Y: fmt_pct(r.get("percentile_3y")),
             LABEL_5Y: fmt_pct(r.get("percentile_5y")),
             LABEL_10Y: fmt_pct(r.get("percentile_10y")),
-            "상태": state_name(str(r.get("state_code", "")), str(r.get("state_label", "")), drop=bool(r.get("drop_flag", False)), key=str(r.get("key", ""))),
-            "빠르게 내림": "⚠︎" if r["drop_flag"] else "",
+            "관측일": r["latest_observed_date"],
+        })
+    return pd.DataFrame(rows)
+
+
+def _signal_matrix_detail_df(matrix: pd.DataFrame) -> pd.DataFrame:
+    """전체 지표 비교의 상세 근거 표. 첫 화면에서는 아코디언 안에 둔다."""
+    rows = []
+    for _, r in matrix.iterrows():
+        rows.append({
+            "지표": core_name(str(r["key"])),
+            "상태": state_name(
+                str(r.get("state_code", "")),
+                str(r.get("state_label", "")),
+                drop=bool(r.get("drop_flag", False)),
+                key=str(r.get("key", "")),
+            ),
+            "지금 뜻": _one_line_interpretation(r),
             "왜 이렇게 표시됐나": plain_language(str(r["state_reason"])),
         })
     return pd.DataFrame(rows)
@@ -447,7 +477,10 @@ def _data_status_summary(snapshot: DashboardSnapshot, store) -> tuple[str, str]:
             "구버전 캐시일 수 있습니다. 최신 배치를 실행한 직후에도 이 문구가 남는다면, "
             "아래의 `이 화면이 Dataset을 다시 읽은 시각`과 활성 데이터 버전이 실제로 갱신됐는지 먼저 확인하세요."
         )
-    elif generation["code_version_missing"] == "no" and generation["code_version"] != __version__:
+    elif (
+        generation["code_version_missing"] == "no"
+        and not _is_compatible_data_code_version(str(generation["code_version"]))
+    ):
         warnings.append(
             "⚠️ 화면 코드와 마지막 배치 코드 버전이 다릅니다. "
             "GitHub 배치가 최신 코드를 실행하는지 확인하세요."
@@ -470,6 +503,7 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
     frames = _frames_from_chart_data(arts.get("chart_data", pd.DataFrame()))
     # 저장된 원본 metadata와 UI fallback 결과를 분리한다.
     effective_dq = _today_context_with_fallback(snapshot.data_quality, arts, aux_df)
+    today_summary_md = render_today_summary_markdown(effective_dq, aux_df)
     today_md = render_today_markdown(effective_dq, aux_df)
     credit_md = render_credit_episode_markdown(effective_dq)
     monthly_md = render_monthly_markdown(
@@ -509,6 +543,7 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         "board": _board_df(arts["signal_matrix"]),
         "details": details,
         "aux_details": aux_details,
+        "today_summary": today_summary_md,
         "today": today_md,
         "credit": credit_md,
         "history_source": history_source_md,
@@ -518,6 +553,7 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         "history_table": _history_table(snapshot.history, selected_key),
         "synced": _synced_df(arts),
         "matrix": _signal_matrix_df(arts["signal_matrix"]),
+        "matrix_detail": _signal_matrix_detail_df(arts["signal_matrix"]),
         "charts": {key: _chart_data(arts, key) for key in C.SERIES_ORDER},
         "status_summary": summary_md,
         "status_warning": warning_md,
@@ -548,55 +584,68 @@ def build_app():
     with gr.Blocks(title="RiskRadar") as demo:
         gr.Markdown("# RiskRadar — 미국 시장 흐름 신호판")
         gr.Markdown(
-            "핵심 6개 지표, HY-BBB 등급차별 렌즈, 확인지표 5개와 외부 참고 2개를 역할별로 나눠 읽습니다. "
-            "기업 신용은 HY·BBB·A·CP의 범위와 지속을 따로 보고, 단일 위험점수나 매매 신호는 만들지 않습니다."
+            "핵심 6개 지표와 기업 신용 범위·지속을 먼저 보여주고, "
+            "읽는 법·가이드·운영 세부는 필요한 경우에만 펼쳐봅니다."
         )
-        loaded_banner = gr.Markdown(initial["banner"])
         reload_button = gr.Button("HF Dataset 최신 데이터 다시 읽기", variant="secondary")
+        with gr.Accordion("현재 데이터 버전·재조회 정보 보기", open=False):
+            loaded_banner = gr.Markdown(initial["banner"])
 
         with gr.Tab("현재 상황"):
-            gr.Markdown(BOARD_HELP)
-            with gr.Accordion("용어가 어렵다면 먼저 보기", open=False):
+            with gr.Accordion("현재 상황 읽는 법", open=False):
+                gr.Markdown(BOARD_HELP)
+            with gr.Accordion("용어·표현 참고하기", open=False):
                 gr.Markdown(EASY_GLOSSARY)
-            board_component = gr.Dataframe(initial["board"], wrap=True, interactive=False)
 
+            board_component = gr.Dataframe(initial["board"], wrap=True, interactive=False)
             credit_component = gr.Markdown(initial["credit"])
 
-            gr.Markdown("## 지표별 상세 설명")
-            gr.Markdown(
-                "궁금한 지표를 펼치면 **현재 데이터와 연결한 해석 → 현재 연결된 조합 → 8칸 상세 설명** 순서로 볼 수 있습니다."
-            )
-            detail_components = {}
-            for key in C.SERIES_ORDER:
-                with gr.Accordion(f"{core_name(key)} 상세 설명 보기", open=False):
-                    detail_components[key] = gr.Markdown(initial["details"].get(key, "현재 데이터를 읽을 수 없습니다."))
+            with gr.Accordion("핵심 6개 지표별 상세 설명 보기", open=False):
+                gr.Markdown(
+                    "궁금한 지표만 펼치면 **현재 데이터와 연결한 해석 → 현재 연결된 조합 → 상세 설명** "
+                    "순서로 볼 수 있습니다."
+                )
+                detail_components = {}
+                for key in C.SERIES_ORDER:
+                    with gr.Accordion(f"{core_name(key)} 상세 설명", open=False):
+                        detail_components[key] = gr.Markdown(
+                            initial["details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
 
-            with gr.Accordion("지표를 함께 본 해석 전체 보기", open=False):
+            with gr.Accordion("지표를 함께 본 전체 해석 보기", open=False):
                 combined_today_component = gr.Markdown(initial["today"])
 
         with gr.Tab("오늘의 해석"):
-            today_component = gr.Markdown(initial["today"])
-            gr.Markdown("---\n\n## 신용 렌즈·확인지표 상세 설명")
-            gr.Markdown(
-                "HY-BBB는 별도 시장이 아닌 등급차별 렌즈입니다. 확인지표는 원인·범위·다른 시장을 보고, 외부 참고는 공식 종합지표가 같은 그림인지 봅니다."
-            )
-            with gr.Accordion(f"{lens_name('HY_BBB')} 상세 설명 보기", open=False):
-                lens_detail_component = gr.Markdown(plain_language(HY_BBB_CARD))
-            aux_detail_components = {}
-            for key in AC.VISIBLE_AUX_ORDER:
-                with gr.Accordion(f"{aux_name(key)} 상세 설명 보기", open=False):
-                    aux_detail_components[key] = gr.Markdown(
-                        initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
-                    )
+            today_summary_component = gr.Markdown(initial["today_summary"])
+            with gr.Accordion("전체 근거·확인지표·다른 경우의 해석 보기", open=False):
+                today_component = gr.Markdown(initial["today"])
+
+            with gr.Accordion("신용 렌즈·확인지표 상세 가이드 보기", open=False):
+                gr.Markdown(
+                    "HY-BBB는 별도 시장이 아닌 등급차별 렌즈입니다. 확인지표는 원인·범위·다른 시장을 보고, "
+                    "외부 참고는 공식 종합지표가 같은 그림인지 봅니다."
+                )
+                with gr.Accordion(f"{lens_name('HY_BBB')} 상세 설명", open=False):
+                    lens_detail_component = gr.Markdown(plain_language(HY_BBB_CARD))
+                aux_detail_components = {}
+                for key in AC.VISIBLE_AUX_ORDER:
+                    with gr.Accordion(f"{aux_name(key)} 상세 설명", open=False):
+                        aux_detail_components[key] = gr.Markdown(
+                            initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
 
         with gr.Tab("지난 30일 흐름"):
-            gr.Markdown(HISTORY_HELP)
-            history_source_component = gr.Markdown(initial["history_source"])
+            with gr.Accordion("지난 30일 흐름 읽는 법", open=False):
+                gr.Markdown(HISTORY_HELP)
+            with gr.Accordion("데이터 구성 방식·주의사항 보기", open=False):
+                history_source_component = gr.Markdown(initial["history_source"])
+
             monthly_component = gr.Markdown(initial["monthly"])
             gr.Markdown("---\n\n## 지표별 30일 흐름")
             selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
             history_state = gr.State(initial["history"])
-            interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
+            with gr.Accordion("선택 지표 읽는 법 보기", open=False):
+                interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
             hist_plot = gr.LinePlot(
                 value=initial["history_plot"], x="날짜", y="최신값",
                 title="선택 지표의 지난 30일 값 변화",
@@ -618,16 +667,21 @@ def build_app():
             )
 
         with gr.Tab("같은 날짜 비교"):
-            gr.Markdown(SYNCED_HELP)
+            with gr.Accordion("같은 날짜 비교 읽는 법", open=False):
+                gr.Markdown(SYNCED_HELP)
             synced_component = gr.Dataframe(initial["synced"], interactive=False)
 
         with gr.Tab("전체 지표 비교"):
-            gr.Markdown(SIGNAL_MATRIX_HELP)
+            with gr.Accordion("전체 지표 비교 읽는 법", open=False):
+                gr.Markdown(SIGNAL_MATRIX_HELP)
             matrix_component = gr.Dataframe(initial["matrix"], wrap=True, interactive=False)
+            with gr.Accordion("지표별 지금 뜻·표시 이유 보기", open=False):
+                matrix_detail_component = gr.Dataframe(initial["matrix_detail"], wrap=True, interactive=False)
 
         chart_components = {}
         with gr.Tab("차트"):
-            gr.Markdown(CHART_HELP)
+            with gr.Accordion("차트 읽는 법", open=False):
+                gr.Markdown(CHART_HELP)
             for key in C.SERIES_ORDER:
                 chart_components[key] = gr.LinePlot(
                     value=initial["charts"][key], x="날짜", y="값",
@@ -635,11 +689,15 @@ def build_app():
                 )
 
         with gr.Tab("데이터 상태"):
-            gr.Markdown("### 데이터 상태\n\n데이터 버전, ICE 회사채 자료 범위, 신용 범위·지속 산출물, 확인지표 수집 실패와 과거값 사용 여부를 확인하는 운영 점검용 정보입니다.")
+            with gr.Accordion("이 탭에서 보는 정보", open=False):
+                gr.Markdown(
+                    "데이터 버전, ICE 회사채 자료 범위, 신용 범위·지속 산출물, "
+                    "확인지표 수집 실패와 과거값 사용 여부를 확인하는 운영 점검용 화면입니다."
+                )
             status_summary_component = gr.Markdown(initial["status_summary"])
             status_warning_component = gr.Markdown(initial["status_warning"])
-            gr.Markdown("#### 확인지표 수집 상태")
-            aux_status_component = gr.Dataframe(initial["aux_status"], wrap=True, interactive=False)
+            with gr.Accordion("확인지표 수집 상세 보기", open=False):
+                aux_status_component = gr.Dataframe(initial["aux_status"], wrap=True, interactive=False)
             with gr.Accordion("원본 상태 정보 보기", open=False):
                 status_json_component = gr.JSON(initial["status_json"])
                 data_quality_json_component = gr.JSON(initial["data_quality_json"])
@@ -665,6 +723,7 @@ def build_app():
             credit_component,
             *[detail_components[k] for k in C.SERIES_ORDER],
             combined_today_component,
+            today_summary_component,
             today_component,
             *[aux_detail_components[k] for k in AC.VISIBLE_AUX_ORDER],
             history_source_component,
@@ -674,6 +733,7 @@ def build_app():
             hist_table,
             synced_component,
             matrix_component,
+            matrix_detail_component,
             *[chart_components[k] for k in C.SERIES_ORDER],
             status_summary_component,
             status_warning_component,
@@ -691,6 +751,7 @@ def build_app():
                 payload["credit"],
                 *[payload["details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in C.SERIES_ORDER],
                 payload["today"],
+                payload["today_summary"],
                 payload["today"],
                 *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in AC.VISIBLE_AUX_ORDER],
                 payload["history_source"],
@@ -700,6 +761,7 @@ def build_app():
                 payload["history_table"],
                 payload["synced"],
                 payload["matrix"],
+                payload["matrix_detail"],
                 *[payload["charts"][k] for k in C.SERIES_ORDER],
                 payload["status_summary"],
                 payload["status_warning"],

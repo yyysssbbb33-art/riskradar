@@ -63,8 +63,8 @@ def test_historical_position_reads_as_rank_not_probability():
 def test_current_board_uses_plain_columns_and_names():
     _, matrix, _, _ = _context()
     board = _board_df(matrix)
-    assert "지금 뜻" in board.columns
-    assert "왜 이렇게 표시됐나" in board.columns
+    assert "지금 뜻" not in board.columns
+    assert "왜 이렇게 표시됐나" not in board.columns
     assert "최근 5년 중 현재 위치" in board.columns
     assert "최근 10년 중 현재 위치" in board.columns
     text = "\n".join(board.astype(str).to_numpy().ravel())

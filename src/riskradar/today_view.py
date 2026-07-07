@@ -341,6 +341,73 @@ def _reading_block(reading: dict) -> str:
     return "\n".join(lines)
 
 
+def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) -> str:
+    """오늘의 해석 탭 첫 화면용 핵심 요약.
+
+    전체 확인 근거와 결과별 대안은 기존 ``render_today_markdown``에 남겨 두고,
+    첫 화면에는 현재 범위·움직이는 영역·주요 조합만 압축해서 보여준다.
+    """
+    dq = dq or {}
+    lines = [
+        "# 오늘의 해석",
+        "",
+        "지금 무엇이 움직이는지와 가장 중요한 조합만 먼저 보여줍니다.",
+    ]
+
+    credit = dq.get("credit_episode") or {}
+    current = credit.get("current") or {}
+    episode = current.get("episode") or {}
+    lens = credit.get("lens") or {}
+    if current:
+        lines += [
+            "",
+            "## 기업 신용",
+            f"- **에피소드:** {episode.get('state_label', '현재 에피소드 없음')}",
+            f"- **범위:** {current.get('scope_text', '확인 불가')}",
+        ]
+        lens_label = str(lens.get("label") or "")
+        if lens_label and lens_label != "확인 불가":
+            lines.append(f"- **등급 간 차별:** {lens_label}")
+
+    axes = dq.get("axes") or {}
+    if axes:
+        changed = [axis_name(x) for x in (axes.get("changed_axes") or [])]
+        base = [axis_name(x) for x in (axes.get("base_axes") or [])]
+        changed_count = axes.get("changed_count")
+        if changed_count is None:
+            changed_count = len(changed)
+        lines += [
+            "",
+            "## 시장 전체",
+            f"- **3개 영역 중 {changed_count}개**에서 평소와 다른 움직임이 보입니다.",
+        ]
+        if changed:
+            lines.append(f"- 움직이는 곳: **{' · '.join(changed)}**")
+        if base:
+            lines.append(f"- 큰 움직임이 없는 곳: {' · '.join(base)}")
+
+    readings = dq.get("readings") or []
+    lines += ["", "## 눈에 띄는 조합"]
+    if not readings:
+        lines.append("현재 정의된 조합 중 따로 설명할 만한 패턴은 잡히지 않았습니다.")
+    else:
+        for reading in readings[:2]:
+            label = plain_language(str(reading.get("label", "확인 불가")))
+            observed = plain_language(str(reading.get("observed", "")))
+            lines.append(f"- **{label}:** {observed}")
+            explanations = _explanation_map(reading)
+            supported = set(reading.get("supported_ids") or [])
+            best = [text for eid, text in explanations.items() if eid in supported]
+            if best:
+                lines.append(f"  - 지금 데이터와 더 잘 맞는 설명: {best[0]}")
+
+    lines += [
+        "",
+        "> 전체 근거, 확인지표 결과, 결과가 달라질 때의 해석은 아래 아코디언에서 볼 수 있습니다.",
+    ]
+    return "\n".join(lines)
+
+
 def render_today_markdown(dq: dict, aux_df: pd.DataFrame | None) -> str:
     dq = dq or {}
     parts = [
