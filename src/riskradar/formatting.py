@@ -12,6 +12,8 @@ def fmt_value(value: float, unit: str) -> str:
     if unit == "bp":
         # 내부 계산은 bp를 유지하지만 사용자 화면에서는 더 익숙한 %p로 보여준다.
         return f"{value / 100.0:.2f}%p"
+    if unit == "지수":
+        return f"{value:.2f}"
     return f"{value:.1f}"  # VIX 등 지수값
 
 
@@ -22,6 +24,8 @@ def fmt_change(x: float, unit: str = "bp") -> str:
         return f"{x / 100.0:+.2f}%p"
     if unit == "pt":
         return f"{x:+.1f}포인트"
+    if unit == "지수":
+        return f"{x:+.2f}"
     return f"{x:+.2f}{unit}"
 
 

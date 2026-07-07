@@ -109,8 +109,8 @@ def vol_credit_axis(frames: dict[str, pd.DataFrame], cfg: AxisCfg = AXIS) -> Vol
         state, label = "D", "주식시장과 회사채가 함께 움직임"
         note = "주식시장이 예상하는 흔들림과 저신용 기업 회사채 추가금리가 모두 평소와 다른 움직임을 보입니다."
     elif vix_active:
-        state, label = "B", "주식시장이 먼저 움직임"
-        note = "주식시장이 예상하는 흔들림이 먼저 커졌고, 저신용 기업 회사채 추가금리는 아직 평소 범위입니다."
+        state, label = "B", "주식시장 쪽만 움직임"
+        note = "주식시장이 예상하는 흔들림은 커졌지만 저신용 기업 회사채 추가금리는 아직 평소 범위입니다. 실제 선후행을 뜻하지 않습니다."
     elif hy_active:
         recent = vf["state_code"].iloc[-cfg.e_link_window:].tolist() if vf is not None else []
         had_vix = any(c in VIX_ACTIVE_STATES for c in recent)

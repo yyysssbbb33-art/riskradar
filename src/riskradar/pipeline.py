@@ -43,6 +43,7 @@ def signal_matrix(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
             "change_20obs": _n(r["change_20obs"]),
             "change_60obs": _n(r["change_60obs"]),
             "change_unit": s.change_unit,
+            "percentile_3y": _n(r["percentile_3y"]),
             "percentile_5y": _n(r["percentile_5y"]),
             "percentile_10y": _n(r["percentile_10y"]),
             "state_code": r["state_code"],
@@ -57,7 +58,7 @@ def chart_data(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
     parts = []
     for key, df in frames.items():
         p = df[["date", "value", "change_20obs", "change_60obs",
-                "percentile_5y", "percentile_10y", "state_code",
+                "percentile_3y", "percentile_5y", "percentile_10y", "state_code",
                 "state_label", "drop_flag"]].copy()
         p.insert(0, "series_id", C.SERIES[key].series_id)
         p.insert(1, "key", key)

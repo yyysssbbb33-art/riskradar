@@ -171,6 +171,7 @@ def state_reason(key: str, row: pd.Series) -> str:
     code = row["state_code"]
     c60 = row.get("change_60obs")
     p10 = row.get("percentile_10y")
+    p3 = row.get("percentile_3y")
 
     if s.state_kind == "vix":
         ptxt = (f"최근 10년 관측일의 {fmt_pct(p10)}" if not pd.isna(p10)
@@ -178,9 +179,10 @@ def state_reason(key: str, row: pd.Series) -> str:
         return f"현재 {row['value']:.1f}, {ptxt}. 현재 상태는 '{state_name(code, key=key)}'입니다."
 
     if s.state_kind == "hyoas":
-        ptxt = (f"최근 10년 관측일의 {fmt_pct(p10)}" if not pd.isna(p10)
-                else "최근 10년 비교 불가")
-        return f"현재 {row['value']:.0f}bp, {ptxt}. 현재 상태는 '{state_name(code, key=key)}'입니다."
+        ptxt = (f"최근 공식 자료 약 3년 중 {fmt_pct(p3)}" if not pd.isna(p3)
+                else "최근 3년 위치 비교 불가")
+        return (f"현재 {row['value']:.0f}bp, {ptxt}. 현재 상태는 '{state_name(code, key=key)}'입니다. "
+                "ICE 계열은 장기 과거 위치 대신 현재 확보된 약 3년 자료를 맥락으로만 보여줍니다.")
 
     if s.state_kind == "t10y3m":
         value_pctp = row["value"] / 100.0

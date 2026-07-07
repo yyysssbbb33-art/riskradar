@@ -25,6 +25,9 @@ class DashboardSnapshot:
     arts: dict[str, pd.DataFrame]
     data_quality: dict
     aux_df: pd.DataFrame
+    aux_raw: pd.DataFrame
+    credit_node_history: pd.DataFrame
+    credit_episodes: pd.DataFrame
     history: pd.DataFrame
     history_source: str
     history_error: str | None = None
@@ -50,6 +53,18 @@ def load_dashboard_snapshot(store, days: int = 30) -> DashboardSnapshot:
         aux_df = pd.DataFrame()
         errors.append(f"보조지표 파일 읽기 실패: {type(e).__name__}: {e}")
 
+
+    def _optional(name: str, label: str) -> pd.DataFrame:
+        try:
+            return store.load_artifact(cache_version, name)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{label} 읽기 실패: {type(e).__name__}: {e}")
+            return pd.DataFrame()
+
+    aux_raw = _optional("aux_raw", "확인지표 원자료")
+    credit_node_history = _optional("credit_episode_nodes", "신용 에피소드 노드 기록")
+    credit_episodes = _optional("credit_episodes", "신용 에피소드 기록")
+
     history = reconstruct_history_from_chart_data(arts.get("chart_data", pd.DataFrame()), days=days)
     history_source = "과거 원자료 재구성" if not history.empty else "저장 스냅샷"
     history_error = None
@@ -66,6 +81,9 @@ def load_dashboard_snapshot(store, days: int = 30) -> DashboardSnapshot:
         arts=arts,
         data_quality=data_quality,
         aux_df=aux_df,
+        aux_raw=aux_raw,
+        credit_node_history=credit_node_history,
+        credit_episodes=credit_episodes,
         history=history,
         history_source=history_source,
         history_error=history_error,

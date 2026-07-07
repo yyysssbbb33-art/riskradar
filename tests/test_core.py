@@ -56,7 +56,7 @@ def test_nan_change_no_rate_state():
 
 def test_percentile_monotone_and_bounds(raw_by_key):
     df = T.build_series_frame("VIX", raw_by_key["VIX"])
-    p = df["percentile_10y"].dropna()
+    p = df["percentile_5y"].dropna()
     assert p.min() >= 0 and p.max() <= 100
 
 
@@ -73,8 +73,8 @@ def test_no_lookahead_metrics_and_states(raw_by_key, cut):
     full = pipeline.compute_frames(raw_by_key)
     cut_raw = {k: v.iloc[:cut].copy() for k, v in raw_by_key.items()}
     cutf = pipeline.compute_frames(cut_raw)
-    cols = ["value", "change_20obs", "change_60obs", "percentile_5y",
-            "percentile_10y", "state_code", "drop_flag"]
+    cols = ["value", "change_20obs", "change_60obs", "percentile_3y",
+            "percentile_5y", "percentile_10y", "state_code", "drop_flag"]
     for key in C.SERIES_ORDER:
         a = full[key].iloc[:cut][cols].reset_index(drop=True)
         b = cutf[key][cols].reset_index(drop=True)

@@ -96,7 +96,7 @@ def test_monthly_view_catches_reversion_remaining_change_and_rate_split():
             })
     history = pd.DataFrame(rows)
     aux_df = pd.DataFrame([
-        {"key": "IGOAS", "direction": "상승", "staleness_label": "normal"},
+        {"key": "AOAS", "direction": "상승", "staleness_label": "normal"},
         {"key": "BREAKEVEN", "direction": "보합", "staleness_label": "normal"},
         {"key": "TERMPREM", "direction": "상승", "staleness_label": "normal"},
     ])
@@ -105,4 +105,4 @@ def test_monthly_view_catches_reversion_remaining_change_and_rate_split():
     assert "한때 크게 움직였다가 되돌아온 것" in text
     assert "주식시장 예상 흔들림" in text
     assert "2년 금리는 내리고 30년 금리는 올랐습니다" in text
-    assert "신용등급 높은 기업의 추가금리" in text
+    assert "A등급 기업의 추가금리" in text

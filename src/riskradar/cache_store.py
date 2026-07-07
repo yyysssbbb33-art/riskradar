@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 ARTIFACT_PARQUETS = ["raw_fred", "signal_matrix", "synced_snapshot", "chart_data"]
 # 하위호환: 옛 캐시 버전에는 없을 수 있는 옵셔널 아티팩트.
 # _verify/필수 load 대상이 아니며, 없으면 빈 DataFrame으로 관용 처리한다.
-OPTIONAL_ARTIFACTS = ["aux_signal_matrix"]
+OPTIONAL_ARTIFACTS = ["aux_signal_matrix", "aux_raw", "credit_episode_nodes", "credit_episodes"]
 # 최근 30일 변화 탭을 안정적으로 보여주려면 14개 보관은 부족하다.
 # 영업일 기준 30일 + 수동 실행 여유분을 고려해 기본 45개 버전을 보관한다.
 KEEP_LAST_N = int(os.environ.get("CACHE_KEEP_LAST_N", "45"))
@@ -223,6 +223,21 @@ class LocalStore:
                 return hit.tail(1).reset_index(drop=True)
         return None
 
+    def find_last_good_aux_raw(self, key: str) -> pd.DataFrame | None:
+        """최신→과거 버전에서 해당 확인지표의 마지막 저장 원자료를 찾는다."""
+        for version in reversed(self.list_versions()):
+            try:
+                df = self.load_artifact(version, "aux_raw")
+            except Exception as e:  # noqa: BLE001
+                log.warning("skip aux raw version %s for %s: %s", version, key, e)
+                continue
+            if df is None or df.empty or "key" not in df.columns:
+                continue
+            hit = df.loc[df["key"].astype(str) == str(key)].copy()
+            if not hit.empty:
+                return hit.sort_values("date").reset_index(drop=True)
+        return None
+
     def _prune(self):
         vs = sorted((self.root / "versions").iterdir())
         for old in vs[:-KEEP_LAST_N]:
@@ -379,6 +394,21 @@ class HfDatasetStore:
             hit = _actual_success_aux_row(df, key)
             if not hit.empty:
                 return hit.tail(1).reset_index(drop=True)
+        return None
+
+    def find_last_good_aux_raw(self, key: str) -> pd.DataFrame | None:
+        """최신→과거 버전에서 해당 확인지표의 마지막 저장 원자료를 찾는다."""
+        for version in reversed(self.list_versions()):
+            try:
+                df = self.load_artifact(version, "aux_raw")
+            except Exception as e:  # noqa: BLE001
+                log.warning("skip aux raw version %s for %s: %s", version, key, e)
+                continue
+            if df is None or df.empty or "key" not in df.columns:
+                continue
+            hit = df.loc[df["key"].astype(str) == str(key)].copy()
+            if not hit.empty:
+                return hit.sort_values("date").reset_index(drop=True)
         return None
 
     def _prune(self):

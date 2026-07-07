@@ -17,6 +17,7 @@ from . import config as C
 from . import aux_config as AC
 from . import aux_indicators
 from . import axis_engine
+from . import credit_episode
 from . import interpretation_engine
 from . import fred_client, pipeline
 from . import telegram_client as tg
@@ -50,6 +51,28 @@ def _raw_long(raw_by_key: dict[str, pd.DataFrame], fetched_at: str,
         p["fetch_status"] = "stale" if key in stale else "ok"
         parts.append(p[["series_id", "key", "date", "value_raw", "value",
                         "unit", "fetched_at_kst", "source", "fetch_status"]])
+    return pd.concat(parts, ignore_index=True)
+
+
+
+def _aux_raw_long(raw_frames: dict[str, pd.DataFrame], fetched_at: str) -> pd.DataFrame:
+    """확인지표 원자료를 장기 포맷으로 저장한다. 에피소드 재구성과 진단용."""
+    parts = []
+    for key, df in raw_frames.items():
+        if key not in AC.AUX_SERIES or df is None or df.empty:
+            continue
+        spec = AC.AUX_SERIES[key]
+        p = df.copy()
+        p["date"] = pd.to_datetime(p["date"])
+        p["key"] = key
+        p["series_id"] = spec.series_id
+        p["value"] = pd.to_numeric(p["value_raw"], errors="coerce") * spec.raw_to_value
+        p["unit"] = spec.value_unit
+        p["fetched_at_kst"] = fetched_at
+        p["source"] = "FRED"
+        parts.append(p[["series_id", "key", "date", "value_raw", "value", "unit", "fetched_at_kst", "source"]])
+    if not parts:
+        return pd.DataFrame(columns=["series_id", "key", "date", "value_raw", "value", "unit", "fetched_at_kst", "source"])
     return pd.concat(parts, ignore_index=True)
 
 
@@ -113,9 +136,20 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         matrix, chart, snap = out["signal_matrix"], out["chart_data"], out["synced"]
 
         # 3b) 보조지표(2층). 실패해도 핵심 6개가 정상이면 전체는 성공.
+        aux_raw_frames: dict[str, pd.DataFrame] = {}
         try:
-            aux = aux_fetcher() if aux_fetcher else aux_indicators.collect_aux()
-        except Exception as e:  # noqa: BLE001 - 보조지표는 원인 확인용, 전체를 깨지 않음
+            if aux_fetcher:
+                supplied = aux_fetcher()
+                if isinstance(supplied, aux_indicators.AuxCollection):
+                    aux = supplied.directions
+                    aux_raw_frames = supplied.raw_frames
+                else:
+                    aux = supplied
+            else:
+                bundle = aux_indicators.collect_aux_bundle()
+                aux = bundle.directions
+                aux_raw_frames = bundle.raw_frames
+        except Exception as e:  # noqa: BLE001 - 확인지표는 전체를 깨지 않음
             log.warning("aux collect failed: %s", e)
             aux = {}
         aux_matrix = _aux_matrix(aux, now)
@@ -125,16 +159,48 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         # 오래된 값은 해석 엔진이 자동으로 집계에서 제외한다.
         aux_matrix = _carry_forward_aux(aux_matrix, store, now)
 
-        # 3c) 3축 복합 조망 + 조건부 해석. 계산 실패는 전체를 깨지 않음.
+        # 범위·지속 엔진은 최신값 한 점이 아니라 BBB/A/CP의 과거 경로가 필요하다.
+        # 이번 수집이 실패했지만 직전 실제 성공값이 아직 stale이 아니면, 같은 원칙으로
+        # 마지막 저장 원자료를 복구해 엔진 경로를 유지한다. 오래된 자료는 사용하지 않는다.
+        raw_finder = getattr(store, "find_last_good_aux_raw", None)
+        if raw_finder is not None:
+            for key in AC.ENGINE_AUX_ORDER:
+                if key in aux_raw_frames and aux_raw_frames[key] is not None and not aux_raw_frames[key].empty:
+                    continue
+                hit = aux_matrix.loc[aux_matrix["key"].astype(str) == key]
+                if hit.empty or str(hit.iloc[-1].get("staleness_label", "stale")) == "stale":
+                    continue
+                try:
+                    previous_raw = raw_finder(key)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("last-good aux raw search failed for %s: %s", key, e)
+                    previous_raw = None
+                if previous_raw is None or previous_raw.empty:
+                    continue
+                aux_raw_frames[key] = previous_raw[["date", "value_raw"]].copy()
+
+        # 3c) 기업 신용 범위·지속 엔진. 순서 주장은 하지 않고 범위·지속·잔존을 본다.
+        credit_result = None
+        try:
+            node_frames = credit_episode.raw_to_node_frames(out["frames"], aux_raw_frames)
+            credit_result = credit_episode.build_credit_episode(
+                node_frames, vix_frame=out["frames"].get("VIX")
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("credit episode engine failed: %s", e)
+
+        # 3d) 3축 복합 조망 + 조건부 해석. 계산 실패는 전체를 깨지 않음.
         try:
             composite = axis_engine.composite_view(out["frames"])
             aux_status = {
                 str(r["key"]): str(r["staleness_label"])
                 for _, r in aux_matrix.iterrows()
+                if str(r["key"]) in AC.ENGINE_AUX_ORDER
             }
             aux_for_reading = {
                 str(r["key"]): SimpleNamespace(direction=str(r["direction"]))
                 for _, r in aux_matrix.iterrows()
+                if str(r["key"]) in AC.ENGINE_AUX_ORDER
             }
             readings = interpretation_engine.read_all(
                 out["frames"], aux_for_reading, aux_status=aux_status
@@ -152,6 +218,9 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             "chart_data": chart,
             "synced_snapshot": _synced_df(out["frames"], snap),
             "aux_signal_matrix": aux_matrix,
+            "aux_raw": _aux_raw_long(aux_raw_frames, started),
+            "credit_episode_nodes": (credit_result.node_history if credit_result is not None else pd.DataFrame()),
+            "credit_episodes": (credit_result.episodes if credit_result is not None else pd.DataFrame()),
             "data_quality": {
                 "code_version": __version__,
                 "failed_series": failed, "stale_series": stale,
@@ -177,6 +246,12 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                 },
                 "axes": axes,
                 "readings": reading_dicts,
+                "credit_episode": (credit_result.to_quality_dict() if credit_result is not None else {}),
+                "ice_history_policy": {
+                    "company_bond_window": "최근 공식 FRED 약 3년 자료",
+                    "long_history_claims": False,
+                    "hyoas_position_years": 3,
+                },
             },
         }
         status_str = "partial_success" if stale else "success"
@@ -207,9 +282,17 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         # 6) telegram (실패해도 refresh 성공 유지)
         if notify:
             batch = now.strftime("%Y-%m-%d %H:%M KST")
-            msg = (tg.build_partial(cache_version, matrix, snap, failed, stale)
+            msg = (tg.build_partial(
+                       cache_version, matrix, snap, failed, stale,
+                       axes=axes, readings=reading_dicts, aux_df=aux_matrix,
+                       credit_episode=(credit_result.to_quality_dict() if credit_result is not None else None),
+                   )
                    if stale else
-                   tg.build_success(batch, cache_version, matrix, snap, stale))
+                   tg.build_success(
+                       batch, cache_version, matrix, snap, stale,
+                       axes=axes, readings=reading_dicts, aux_df=aux_matrix,
+                       credit_episode=(credit_result.to_quality_dict() if credit_result is not None else None),
+                   ))
             sent = tg.send(msg)
             status["telegram_sent"] = sent
             # parquet 전체를 다시 올리지 않는다. 상태 갱신 실패도 데이터 성공을 깨지 않는다.
@@ -241,11 +324,14 @@ def _aux_matrix(aux: dict, now: datetime) -> pd.DataFrame:
         if a is None:
             rows.append({
                 "key": key, "series_id": spec.series_id,
-                "display_name": spec.display_name, "ok": False,
+                "display_name": spec.display_name, "category": spec.category,
+                "use_in_engine": spec.use_in_engine, "ok": False,
                 "latest_value": None, "value_unit": spec.value_unit,
                 "latest_date": None, "change_1m": None,
                 "change_unit": spec.change_unit, "direction": "판정불가",
-                "pct_in_history": None, "n_obs": 0,
+                "pct_in_history": None, "level_pct": None, "n_obs": 0,
+                "history_start": None, "history_end": None, "history_years": None,
+                "layer": spec.layer, "visible": spec.visible,
                 "stale_days": None, "staleness_label": "stale",
                 "fetch_status": "failed", "error": "missing",
             })
@@ -257,11 +343,18 @@ def _aux_matrix(aux: dict, now: datetime) -> pd.DataFrame:
             sd, slabel = None, "stale"
         rows.append({
             "key": key, "series_id": spec.series_id,
-            "display_name": spec.display_name, "ok": a.ok,
+            "display_name": spec.display_name, "category": spec.category,
+            "use_in_engine": spec.use_in_engine, "ok": a.ok,
             "latest_value": a.latest_value, "value_unit": spec.value_unit,
             "latest_date": a.latest_date, "change_1m": a.change_1m,
             "change_unit": spec.change_unit, "direction": a.direction,
-            "pct_in_history": a.pct_in_history, "n_obs": a.n_obs,
+            "pct_in_history": a.pct_in_history,
+            "level_pct": getattr(a, "level_pct", None),
+            "n_obs": a.n_obs,
+            "history_start": getattr(a, "history_start", None),
+            "history_end": getattr(a, "history_end", None),
+            "history_years": getattr(a, "history_years", None),
+            "layer": spec.layer, "visible": spec.visible,
             "stale_days": sd, "staleness_label": slabel,
             "fetch_status": "ok" if a.ok else "failed", "error": a.error,
         })

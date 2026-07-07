@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import pandas as pd
-
 from .display_text import (AUX_ROLES, aux_name, axis_name, core_name,
                            plain_language, state_name)
 from .formatting import fmt_change as fmt_change_value
@@ -24,14 +23,14 @@ _FRESHNESS = {
 
 _VOL_CREDIT_LABELS = {
     "A": "큰 변화 없음",
-    "B": "주식시장 흔들림이 먼저 움직임",
+    "B": "주식시장 쪽만 움직임",
     "C": "회사채 쪽만 움직임",
     "D": "주식시장과 회사채가 함께 움직임",
     "E": "주식시장은 진정 · 회사채 변화는 이어짐",
 }
 _VOL_CREDIT_LABEL_TEXT = {
     "뚜렷한 변화 없음": "큰 변화 없음",
-    "변동성 선행": "주식시장 흔들림이 먼저 움직임",
+    "변동성 선행": "주식시장 쪽만 움직임",
     "신용 단독 변화": "회사채 쪽만 움직임",
     "변동성·신용 동반": "주식시장과 회사채가 함께 움직임",
     "변동성 진정·신용 변화 지속": "주식시장은 진정 · 회사채 변화는 이어짐",
@@ -51,6 +50,66 @@ def _fmt_change(row) -> str:
     return f"{_DIR_MARK.get(direction, direction)} ({fmt_change_value(row.get('change_1m'), row.get('change_unit', ''))})"
 
 
+_AUX_GROUPS = [
+    ("장기금리가 왜 움직이나", ("BREAKEVEN", "TERMPREM")),
+    ("기업 부담이 어디까지 번졌나", ("BBBOAS", "AOAS")),
+    ("단기 자금시장도 영향을 받고 있나", ("CPSPREAD",)),
+    ("외부 종합 참고", ("NFCI", "STLFSI")),
+]
+
+
+def _reference_level_text(key: str, row) -> str:
+    """외부 종합 참고지표의 현재 수준을 자기 역사에서 쉬운 말로 표시."""
+    pct = row.get("level_pct")
+    if pct is None or pd.isna(pct):
+        return "현재 수준 비교 불가"
+    pct = float(pct)
+    if 40.0 <= pct <= 60.0:
+        return "평소 범위"
+    if key == "NFCI":
+        return "평소보다 자금 사정이 빡빡한 쪽" if pct > 60.0 else "평소보다 자금 사정이 느슨한 쪽"
+    if key == "STLFSI":
+        return "평소보다 시장 불안이 높은 쪽" if pct > 60.0 else "평소보다 시장 불안이 낮은 쪽"
+    return "평소보다 높은 쪽" if pct > 60.0 else "평소보다 낮은 쪽"
+
+
+def _aux_row_lines(row, key: str | None = None) -> list[str]:
+    key = key or str(row.get("key", ""))
+    fresh_raw = str(row.get("staleness_label", "normal"))
+    fresh = _FRESHNESS.get(fresh_raw, fresh_raw)
+    date = row.get("latest_date")
+    fetch_status = str(row.get("fetch_status", "ok"))
+    error = row.get("error")
+
+    has_latest_value = "latest_value" in row.index
+    if has_latest_value and (row.get("latest_value") is None or pd.isna(row.get("latest_value"))):
+        msg = f"- **{aux_name(key)}**: 이번 캐시에서 값을 불러오지 못했습니다."
+        if error and str(error) not in ("None", "nan", "missing"):
+            msg += " 데이터 상태 탭에서 수집 오류를 확인할 수 있습니다."
+        lines = [msg]
+        role = AUX_ROLES.get(key)
+        if role:
+            lines.append(f"  - 이 지표를 쓰는 이유: {role}")
+        return lines
+
+    status_note = ""
+    if fetch_status == "carried_forward":
+        status_note = " · 이번 수집 실패로 직전 성공값 사용"
+    elif fetch_status == "failed":
+        status_note = " · 이번 수집 실패"
+
+    date_text = f"관측일 {date}" if date else "관측일 확인 불가"
+    if key in {"NFCI", "STLFSI"}:
+        summary = f"{_reference_level_text(key, row)} · {_fmt_change(row)}"
+    else:
+        summary = _fmt_change(row)
+    lines = [f"- **{aux_name(key)}**: {summary} · {fresh}{status_note} · {date_text}"]
+    role = AUX_ROLES.get(key)
+    if role:
+        lines.append(f"  - 이 지표를 쓰는 이유: {role}")
+    return lines
+
+
 def _aux_section(aux_df: pd.DataFrame) -> str:
     if aux_df is None or aux_df.empty:
         return (
@@ -61,48 +120,103 @@ def _aux_section(aux_df: pd.DataFrame) -> str:
 
     lines = [
         "### 원인을 구분할 때 같이 보는 지표",
-        "아래 3개는 시장 상태를 점수에 더하지 않습니다. 여러 가능한 원인 중 무엇이 현재 데이터와 더 잘 맞는지 구분할 때만 씁니다.",
+        "확인 지표는 원인·범위·다른 자금시장을 확인하고, 외부 참고는 공식 종합지표가 같은 그림인지 마지막에 봅니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
         "",
     ]
+    old_name_to_key = {
+        "10Y Breakeven": "BREAKEVEN",
+        "A OAS": "AOAS",
+        "10Y Term Premium (KW)": "TERMPREM",
+    }
+    by_key = {}
     for _, row in aux_df.iterrows():
         key = str(row.get("key", ""))
-        if not key:
-            raw_name = str(row.get("display_name", ""))
-            key = {
-                "10Y Breakeven": "BREAKEVEN",
-                "IG OAS": "IGOAS",
-                "10Y Term Premium (KW)": "TERMPREM",
-            }.get(raw_name, raw_name)
-
-        fresh_raw = str(row.get("staleness_label", "normal"))
-        fresh = _FRESHNESS.get(fresh_raw, fresh_raw)
-        date = row.get("latest_date")
-        fetch_status = str(row.get("fetch_status", "ok"))
-        error = row.get("error")
-
-        if row.get("latest_value") is None or pd.isna(row.get("latest_value")):
-            msg = f"- **{aux_name(key)}**: 이번 캐시에서 값을 불러오지 못했습니다."
-            if error and str(error) not in ("None", "nan", "missing"):
-                msg += " 데이터 상태 탭에서 수집 오류를 확인할 수 있습니다."
-            lines.append(msg)
-            role = AUX_ROLES.get(key)
-            if role:
-                lines.append(f"  - 이 지표를 쓰는 이유: {role}")
+        if not key or key == "nan":
+            key = old_name_to_key.get(str(row.get("display_name", "")), "")
+        if key:
+            by_key[key] = row
+    for title, keys in _AUX_GROUPS:
+        present = [k for k in keys if k in by_key]
+        if not present:
             continue
-
-        status_note = ""
-        if fetch_status == "carried_forward":
-            status_note = " · 이번 수집 실패로 직전 성공값 사용"
-        elif fetch_status == "failed":
-            status_note = " · 이번 수집 실패"
-
-        date_text = f"관측일 {date}" if date else "관측일 확인 불가"
-        lines.append(f"- **{aux_name(key)}**: {_fmt_change(row)} · {fresh}{status_note} · {date_text}")
-        role = AUX_ROLES.get(key)
-        if role:
-            lines.append(f"  - 이 지표를 쓰는 이유: {role}")
+        lines += [f"#### {title}"]
+        if title == "기업 부담이 어디까지 번졌나":
+            lines.append("핵심지표인 신용등급 낮은 기업의 추가금리와 함께 봅니다.")
+        elif title == "외부 종합 참고":
+            lines.append("아래 지표는 RiskRadar 해석 엔진에 넣지 않고, 공식 기관의 종합지표가 같은 방향을 가리키는지만 참고합니다.")
+        for key in present:
+            lines.extend(_aux_row_lines(by_key[key], key))
+        lines.append("")
     return "\n".join(lines)
 
+
+def _credit_episode_section(dq: dict) -> str:
+    credit = (dq or {}).get("credit_episode") or {}
+    current = credit.get("current") or {}
+    episode = current.get("episode") or {}
+    nodes = current.get("nodes") or {}
+    lens = credit.get("lens") or {}
+    vix = credit.get("vix_context") or {}
+    state = str(episode.get("state", "none"))
+    if not current:
+        return "### 기업 신용 범위와 지속\n현재 캐시에는 범위·지속 엔진 결과가 없습니다."
+
+    lines = [
+        "### 기업 신용 범위와 지속",
+        "이 부분은 누가 먼저였는지 추정하지 않고, **어느 실제 시장이 참여하고 무엇이 아직 남아 있는지**를 봅니다.",
+        "",
+        f"- **에피소드 상태:** {episode.get('state_label', '현재 에피소드 없음')}",
+        f"- **현재 범위:** {current.get('scope_text', '확인 불가')}",
+    ]
+    if episode.get("started_at"):
+        lines.append(f"- **현재 에피소드 시작:** {episode.get('started_at')} · 마지막 의미 있는 변화 {episode.get('last_meaningful_activity_at') or '확인 불가'}")
+    if state == "dormant":
+        lines.append("- **휴면 의미:** 새 변화는 한동안 없지만 이전 변화의 잔존이 남아 있습니다. 새 시장이 움직이면 새 에피소드로 분리합니다.")
+    if episode.get("prior_residual_nodes"):
+        lines.append("- **이전 잔존:** 이전 휴면 에피소드의 잔존 변화 위에서 새 변화가 시작됐습니다.")
+
+    lines += ["", "#### 실제 시장별 현재 상태"]
+    for key in ("HY", "BBB", "A", "CP"):
+        row = nodes.get(key) or {}
+        if not row.get("available"):
+            lines.append(f"- **{key}:** 확인 불가")
+            continue
+        extra = []
+        if row.get("estimated_onset"):
+            extra.append(f"변화 시작 {row.get('estimated_onset')} 무렵")
+        if row.get("residual_change") is not None:
+            extra.append(f"기준선 대비 {row.get('residual_change') / 100.0:+.2f}%p 남음")
+        suffix = " · " + " · ".join(extra) if extra else ""
+        lines.append(f"- **{row.get('name', key)}:** {row.get('state_label', '확인 불가')}{suffix}")
+
+    lines += [
+        "",
+        "#### 등급 간 차별 렌즈",
+        f"- {lens.get('label', '확인 불가')}",
+    ]
+    if lens.get("latest_value_bp") is not None:
+        lines.append(f"- HY-BBB 차이: {lens.get('latest_value_bp') / 100.0:.2f}%p · 약 1개월 {lens.get('change_1m_bp', 0.0) / 100.0:+.2f}%p")
+    cp_calendar = current.get("cp_calendar_context") or {}
+    if cp_calendar.get("year_end"):
+        lines += ["", "#### 단기자금 캘린더 진단", f"- {cp_calendar.get('note')}"]
+    if vix.get("available"):
+        lines += [
+            "",
+            "#### 주식시장 맥락",
+            f"- {vix.get('onset', '확인 불가')}",
+            f"- {vix.get('current', '확인 불가')}",
+        ]
+    lines += [
+        "",
+        "> HY-BBB 차이는 별도 시장이 아니라 HY와 BBB의 상대적 차이를 보는 렌즈입니다. 범위 엔진의 참여 시장으로 두 번 세지 않습니다.",
+    ]
+    return "\n".join(lines)
+
+
+
+def render_credit_episode_markdown(data_quality: dict | None) -> str:
+    """현재 기업 신용 범위·지속 결과만 독립적으로 렌더링한다."""
+    return plain_language(_credit_episode_section(data_quality or {}))
 
 def _axes_section(axes: dict) -> str:
     if not axes:
@@ -233,6 +347,8 @@ def render_today_markdown(dq: dict, aux_df: pd.DataFrame | None) -> str:
         "# 오늘의 해석",
         "",
         "오늘 데이터에서 **어느 부분이 움직였는지**, 그리고 함께 본 지표가 여러 가능한 설명 중 무엇과 더 잘 맞는지 보여줍니다.",
+        "",
+        _credit_episode_section(dq),
         "",
         _axes_section(dq.get("axes")),
         "",

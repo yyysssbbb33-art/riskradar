@@ -11,8 +11,10 @@ APP_TIMEZONE = "Asia/Seoul"
 FRED_START_DATE = "1990-01-01"
 
 # point-in-time 백분위 최소 관측치
+MIN_OBS_3Y = 500
 MIN_OBS_5Y = 500
 MIN_OBS_10Y = 1000
+PERCENTILE_MIN_COVERAGE_RATIO = 0.90
 
 # calendar-span guard (긴 공백을 가로지른 변화량은 NaN 처리)
 SPAN_GUARD_20OBS_DAYS = 45
@@ -31,15 +33,16 @@ class Series:
     value_unit: str         # 저장 value 표시 단위
     change_to_bp: float     # 내부 value diff -> change 표시값 배율
     change_unit: str        # change 표시 단위
-    percentile_applicable: bool  # 백분위를 상태 판정에 쓰는지
+    percentile_applicable: bool  # 백분위를 상태 판정/맥락에 쓰는지
     state_kind: str         # "vix" | "hyoas" | "t10y3m" | "rate"
+    position_years: tuple[int, ...] = ()  # 사용자 화면에 허용되는 과거 위치 기간
 
 
 SERIES: dict[str, Series] = {
     "VIX": Series("VIXCLS", "VIX", "VIX", "변동성",
-                  1.0, "index", 1.0, "pt", True, "vix"),
+                  1.0, "index", 1.0, "pt", True, "vix", (5, 10)),
     "HYOAS": Series("BAMLH0A0HYM2", "HYOAS", "HY OAS", "신용",
-                    100.0, "bp", 1.0, "bp", True, "hyoas"),
+                    100.0, "bp", 1.0, "bp", True, "hyoas", (3,)),
     "T10Y3M": Series("T10Y3M", "T10Y3M", "T10Y3M", "경기사이클",
                      100.0, "bp", 1.0, "bp", False, "t10y3m"),
     "DGS30": Series("DGS30", "DGS30", "30Y", "장기금리",

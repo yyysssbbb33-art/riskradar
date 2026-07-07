@@ -37,7 +37,7 @@ def change_nobs(values: pd.Series, dates: pd.Series, n: int, guard_days: int,
 
 
 def point_in_time_percentile(values: pd.Series, dates: pd.Series, years: int,
-                             min_obs: int) -> pd.Series:
+                             min_obs: int, min_coverage_ratio: float = C.PERCENTILE_MIN_COVERAGE_RATIO) -> pd.Series:
     """각 관측일 t에서 [t-years, t] 창 안 value_t의 백분위(0~100).
 
     미래 데이터 누수 없음. 창 내 관측치가 min_obs 미만이면 NaN.
@@ -55,6 +55,11 @@ def point_in_time_percentile(values: pd.Series, dates: pd.Series, years: int,
         window = v[lo:i + 1]
         if len(window) < min_obs:
             continue
+        # 관측치 개수만 많고 실제 달력 범위가 짧은 경우를 장기 위치로 오인하지 않는다.
+        # ICE BofA 계열처럼 공식 제공 범위가 잘린 경우 3년 자료를 5년 위치로 표시하는 버그를 막는다.
+        coverage_days = int((d[i] - d[lo]) / np.timedelta64(1, "D"))
+        if coverage_days < int(365 * years * min_coverage_ratio):
+            continue
         out[i] = float(np.mean(window <= v[i]) * 100.0)
     return pd.Series(out, index=values.index)
 
@@ -63,7 +68,7 @@ def build_series_frame(key: str, raw_df: pd.DataFrame) -> pd.DataFrame:
     """단일 시리즈의 raw -> 분석 프레임.
 
     raw_df: columns [date, value_raw]  (실제 관측만, 오름차순, 결측 없음)
-    반환: date, value, change_20obs, change_60obs, percentile_5y, percentile_10y
+    반환: date, value, change_20obs, change_60obs, percentile_3y/5y/10y
     """
     s = C.SERIES[key]
     df = raw_df.sort_values("date").reset_index(drop=True).copy()
@@ -73,14 +78,19 @@ def build_series_frame(key: str, raw_df: pd.DataFrame) -> pd.DataFrame:
         df[f"change_{n}obs"] = change_nobs(df["value"], df["date"], n, guard,
                                            s.change_to_bp)
 
+    df["percentile_3y"] = np.nan
+    df["percentile_5y"] = np.nan
+    df["percentile_10y"] = np.nan
     if s.percentile_applicable:
-        df["percentile_5y"] = point_in_time_percentile(
-            df["value"], df["date"], 5, C.MIN_OBS_5Y)
-        df["percentile_10y"] = point_in_time_percentile(
-            df["value"], df["date"], 10, C.MIN_OBS_10Y)
-    else:
-        df["percentile_5y"] = np.nan
-        df["percentile_10y"] = np.nan
+        if 3 in s.position_years:
+            df["percentile_3y"] = point_in_time_percentile(
+                df["value"], df["date"], 3, C.MIN_OBS_3Y)
+        if 5 in s.position_years:
+            df["percentile_5y"] = point_in_time_percentile(
+                df["value"], df["date"], 5, C.MIN_OBS_5Y)
+        if 10 in s.position_years:
+            df["percentile_10y"] = point_in_time_percentile(
+                df["value"], df["date"], 10, C.MIN_OBS_10Y)
     return df
 
 

@@ -45,6 +45,12 @@ class ReadingContext:
         if self.aux_status.get(key) == "stale":
             return CR.NA
         a = self.aux.get(key)
+        # v0.6.0부터 범위 확인은 A등급 단독 지표를 사용한다.
+        # 구버전 캐시·회귀 테스트에는 broad IG(IGOAS)만 있을 수 있어 읽기 호환만 유지한다.
+        if a is None and key == "AOAS":
+            if self.aux_status.get("IGOAS") == "stale":
+                return CR.NA
+            a = self.aux.get("IGOAS")
         if a is None:
             return CR.NA
         return getattr(a, "direction", CR.NA)
@@ -57,7 +63,7 @@ class ReadingContext:
     def credit_widening(self) -> bool:
         if self.vc.hy_active:
             return True
-        return self.direction("IGOAS") == CR.UP
+        return any(self.direction(k) == CR.UP for k in ("BBBOAS", "AOAS"))
 
 
 def build_context(frames: dict, aux: dict,

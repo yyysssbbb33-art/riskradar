@@ -10,6 +10,7 @@ from typing import Mapping
 
 import pandas as pd
 
+from . import aux_config as AC
 from . import config as C
 from .core_directions import compute_core_direction
 from .display_text import aux_name, core_name, plain_language, state_name
@@ -35,7 +36,7 @@ class GuidancePlan:
 def _direction(key: str, frames: dict[str, pd.DataFrame] | None,
                aux_df: pd.DataFrame | None) -> tuple[str, str]:
     """현재 방향과 freshness를 반환."""
-    if key in {"BREAKEVEN", "IGOAS", "TERMPREM"}:
+    if key in AC.AUX_SERIES:
         if aux_df is None or aux_df.empty or "key" not in aux_df.columns:
             return NA, "unknown"
         hit = aux_df.loc[aux_df["key"].astype(str) == key]
@@ -102,11 +103,25 @@ def _plan_vix(state: str) -> GuidancePlan:
             "이 추가금리에 뚜렷한 움직임이 없으면 현재 주식시장 흔들림이 회사채 시장 전반으로 이어졌다고 볼 근거는 약합니다.",
         ),
         _check(
-            "IGOAS",
-            "기업 자금 부담이 신용등급 높은 기업까지 넓어지는지 봅니다.",
-            "신용등급 높은 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
-            "신용등급 높은 기업의 추가금리가 내리면 기업 전반의 자금 부담이 같이 커졌다는 설명은 약해집니다.",
-            "신용등급 높은 기업의 추가금리에 뚜렷한 움직임이 없으면 변화가 주식시장이나 신용등급 낮은 기업 쪽에 더 집중됐을 가능성을 봅니다.",
+            "BBBOAS",
+            "회사채 부담이 저신용 기업을 넘어 투자등급 경계 기업까지 번지는지 봅니다.",
+            "투자등급 경계 기업의 추가금리도 오르면 주식시장 흔들림과 함께 기업 자금 부담의 범위도 넓어지는지 볼 근거가 늘어납니다.",
+            "투자등급 경계 기업의 추가금리가 내리면 회사채 부담이 넓게 번진다는 설명은 약해집니다.",
+            "투자등급 경계 기업의 추가금리에 뚜렷한 움직임이 없으면 변화가 주식시장이나 저신용 기업 쪽에 더 집중됐을 가능성을 봅니다.",
+        ),
+        _check(
+            "AOAS",
+            "기업 자금 부담이 A등급 기업까지 넓어지는지 봅니다.",
+            "A등급 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
+            "A등급 기업의 추가금리가 내리면 기업 전반의 자금 부담이 같이 커졌다는 설명은 약해집니다.",
+            "A등급 기업의 추가금리에 뚜렷한 움직임이 없으면 변화가 주식시장이나 신용등급 낮은 기업 쪽에 더 집중됐을 가능성을 봅니다.",
+        ),
+        _check(
+            "CPSPREAD",
+            "주식시장 흔들림이 단기 기업자금시장의 신용도 차별과 같은 시기에 나타나는지 봅니다.",
+            "단기자금 금리 차이도 벌어지면 주식시장 불안이 기업의 단기 자금조달 차별과 함께 나타나는지 더 확인합니다.",
+            "단기자금 금리 차이가 줄면 단기 기업자금시장까지 부담이 번졌다는 설명은 약해집니다.",
+            "단기자금 금리 차이에 뚜렷한 움직임이 없으면 현재 변화가 단기 기업자금시장까지 이어졌다는 근거는 약합니다.",
         ),
     ))
 
@@ -115,20 +130,34 @@ def _plan_hy(state: str) -> GuidancePlan:
     if state in {"평소 수준", "보통 수준"}:
         intro = (
             "신용등급 낮은 기업의 추가금리는 현재 큰 변화가 없습니다. "
-            "신용등급 높은 기업과 주식시장에도 다른 움직임이 있는지 함께 봅니다."
+            "A등급 기업과 주식시장에도 다른 움직임이 있는지 함께 봅니다."
         )
     else:
         intro = (
             f"신용등급 낮은 기업의 추가금리는 현재 '{state}'입니다. "
-            "이 변화가 낮은 등급 기업에만 있는지, 높은 등급 기업과 주식시장까지 넓어지는지 확인합니다."
+            "이 변화가 낮은 등급 기업에만 있는지, A등급 기업과 주식시장까지 넓어지는지 확인합니다."
         )
     return GuidancePlan(intro, (
         _check(
-            "IGOAS",
-            "신용등급 높은 기업도 국채보다 더 높은 금리를 요구받는지 봅니다.",
-            "높은 등급 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
-            "높은 등급 기업의 추가금리가 내리면 변화가 신용등급 낮은 기업이나 특정 업종에 더 집중됐다는 설명과 잘 맞습니다.",
-            "높은 등급 기업의 추가금리에 뚜렷한 움직임이 없으면 변화가 낮은 등급 기업 쪽에 더 집중됐을 가능성을 봅니다.",
+            "BBBOAS",
+            "저신용 기업의 부담이 투자등급 경계 기업까지 번지는지 봅니다.",
+            "투자등급 경계 기업의 추가금리도 오르면 기업 자금 부담이 저신용 기업을 넘어 넓어지는 설명을 더 지지합니다.",
+            "투자등급 경계 기업의 추가금리가 내리면 현재 변화가 저신용 기업에 더 집중됐다는 설명과 잘 맞습니다.",
+            "투자등급 경계 기업의 추가금리에 뚜렷한 움직임이 없으면 BBB까지 부담이 번졌다는 확인 신호는 약합니다.",
+        ),
+        _check(
+            "AOAS",
+            "A등급 기업도 국채보다 더 높은 금리를 요구받는지 봅니다.",
+            "A등급 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
+            "A등급 기업의 추가금리가 내리면 변화가 신용등급 낮은 기업이나 특정 업종에 더 집중됐다는 설명과 잘 맞습니다.",
+            "A등급 기업의 추가금리에 뚜렷한 움직임이 없으면 변화가 낮은 등급 기업 쪽에 더 집중됐을 가능성을 봅니다.",
+        ),
+        _check(
+            "CPSPREAD",
+            "회사채 부담이 단기 기업자금시장의 신용도 차별까지 같이 나타나는지 봅니다.",
+            "단기자금 금리 차이도 벌어지면 기업 자금조달 부담이 회사채뿐 아니라 단기시장에서도 나타나는지 더 확인합니다.",
+            "단기자금 금리 차이가 줄면 단기 기업자금시장까지 부담이 번졌다는 설명은 약해집니다.",
+            "단기자금 금리 차이에 뚜렷한 움직임이 없으면 현재 회사채 변화가 단기 자금시장까지 번졌다는 근거는 약합니다.",
         ),
         _check(
             "VIX",
@@ -172,11 +201,11 @@ def _plan_cycle(state: str) -> GuidancePlan:
             "이 추가금리에 뚜렷한 움직임이 없으면 회사채 시장에서 같은 방향의 확인 신호는 뚜렷하지 않습니다.",
         ),
         _check(
-            "IGOAS",
-            "기업 자금 부담 변화가 신용등급 높은 기업까지 넓어지는지 봅니다.",
-            "높은 등급 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
-            "높은 등급 기업의 추가금리가 내리면 기업 전반의 자금 부담 악화라는 설명은 약해집니다.",
-            "높은 등급 기업의 추가금리에 뚜렷한 움직임이 없으면 넓은 범위의 회사채가 함께 움직인다는 신호는 뚜렷하지 않습니다.",
+            "AOAS",
+            "기업 자금 부담 변화가 A등급 기업까지 넓어지는지 봅니다.",
+            "A등급 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
+            "A등급 기업의 추가금리가 내리면 기업 전반의 자금 부담 악화라는 설명은 약해집니다.",
+            "A등급 기업의 추가금리에 뚜렷한 움직임이 없으면 넓은 범위의 회사채가 함께 움직인다는 신호는 뚜렷하지 않습니다.",
         ),
         _check(
             "DGS2",
@@ -295,11 +324,11 @@ def _plan_dgs2(direction: str, state: str) -> GuidancePlan:
         ),
         _check("HYOAS", "신용등급 낮은 기업의 자금 부담이 같은 시기에 변하는지 봅니다.", credit_up, credit_down, credit_flat),
         _check(
-            "IGOAS",
-            "기업 자금 부담 변화가 신용등급 높은 기업까지 넓어지는지 봅니다.",
-            "높은 등급 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
-            "높은 등급 기업의 추가금리가 내리면 기업 전반의 자금 부담 악화라는 설명은 약해집니다.",
-            "높은 등급 기업의 추가금리에 뚜렷한 움직임이 없으면 넓은 범위의 회사채가 함께 움직인다는 신호는 없습니다.",
+            "AOAS",
+            "기업 자금 부담 변화가 A등급 기업까지 넓어지는지 봅니다.",
+            "A등급 기업의 추가금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
+            "A등급 기업의 추가금리가 내리면 기업 전반의 자금 부담 악화라는 설명은 약해집니다.",
+            "A등급 기업의 추가금리에 뚜렷한 움직임이 없으면 넓은 범위의 회사채가 함께 움직인다는 신호는 없습니다.",
         ),
         _check(
             "BREAKEVEN",
@@ -377,7 +406,7 @@ def _current_result(check: GuidanceCheck, frames: dict[str, pd.DataFrame] | None
             value = pd.to_numeric(frame["change_20obs"], errors="coerce").iloc[-1]
             if pd.notna(value):
                 detail = f"약 1개월 변화 {fmt_change(float(value), C.SERIES[check.key].change_unit)}"
-    elif check.key in {"BREAKEVEN", "IGOAS", "TERMPREM"} and aux_df is not None and not aux_df.empty:
+    elif check.key in AC.AUX_SERIES and aux_df is not None and not aux_df.empty:
         hit = aux_df.loc[aux_df["key"].astype(str) == check.key] if "key" in aux_df.columns else pd.DataFrame()
         if not hit.empty:
             row = hit.iloc[-1]
@@ -412,7 +441,7 @@ def render_state_guidance(key: str, row: pd.Series | dict,
     for idx, check in enumerate(plan.checks, start=1):
         result, freshness, detail = _current_result(check, frames, aux_df, matrix)
         current_text = check.branches.get(result, check.branches.get(NA, "현재 결과를 해석할 수 없습니다."))
-        label = aux_name(check.key) if check.key in {"BREAKEVEN", "IGOAS", "TERMPREM"} else core_name(check.key, short=True)
+        label = aux_name(check.key) if check.key in AC.AUX_SERIES else core_name(check.key, short=True)
         fresh_note = ""
         if freshness == "delayed":
             fresh_note = " · 업데이트 지연"
