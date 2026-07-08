@@ -1,8 +1,8 @@
 """RiskRadar 함께 볼 지표·외부참고 설정.
 
-v0.6.0의 3층 구조
+v0.7.1의 3층 구조
 - 핵심 신호: 기존 핵심 6개 + 기업 신용 블록의 HY-BBB 해석 기준
-- 확인 지표: 장기금리 원인(BREAKEVEN/TERMPREM), 신용 범위(BBB/A), 단기자금(CP)
+- 확인 지표: 10년 금리 참고 맥락(BREAKEVEN/TERMPREM), 신용 범위(BBB/A), 단기자금(CP)
 - 외부 참고: NFCI/STLFSI
 
 broad IG(IGOAS)는 과거 캐시와 운영 진단을 위해 수집은 유지하지만 범위 엔진·UI 상세 목록에서는 제외한다.
@@ -37,14 +37,14 @@ class AuxSeries:
 
 AUX_SERIES: dict[str, AuxSeries] = {
     "BREAKEVEN": AuxSeries(
-        "T10YIE", "BREAKEVEN", "채권시장이 보는 10년 물가 예상",
-        "장기금리가 움직일 때 시장의 장기 물가 예상도 같은 방향인지 확인",
-        "fred", 1.0, "%", 100.0, "bp", category="rate_cause",
+        "T10YIE", "BREAKEVEN", "10년 명목−실질 금리차",
+        "30년 구성의 직접 요소가 아니라 10년 구간의 물가보상 움직임을 교차 만기로 참고",
+        "fred", 1.0, "%", 100.0, "bp", category="rate_context",
     ),
     "TERMPREM": AuxSeries(
         "THREEFYTP10", "TERMPREM", "장기채 추가 보상",
-        "장기채 수요·공급과 장기 보유 불확실성 때문에 요구하는 추가 보상이 변했는지 확인",
-        "fred", 1.0, "%", 100.0, "bp", category="rate_cause",
+        "30년 구성에 더하지 않고 10년 장기채 보상 움직임을 별도 맥락으로 참고",
+        "fred", 1.0, "%", 100.0, "bp", category="rate_context",
     ),
     "BBBOAS": AuxSeries(
         "BAMLC0A4CBBB", "BBBOAS", "투자등급 경계 기업의 추가 금리",
@@ -91,6 +91,20 @@ AUX_SERIES: dict[str, AuxSeries] = {
 CONFIRM_AUX_ORDER = ["BREAKEVEN", "TERMPREM", "BBBOAS", "AOAS", "CPSPREAD"]
 EXTERNAL_AUX_ORDER = ["NFCI", "STLFSI"]
 VISIBLE_AUX_ORDER = CONFIRM_AUX_ORDER + EXTERNAL_AUX_ORDER
+# 상세 목록과 첫 화면 변화센터는 서로 다른 사용자 표면이다.
+# 현재 v0.7.1은 기존 사용자 노출을 보수적으로 유지해 IGOAS만 제외한다.
+# 지표 역할이 바뀌어도 변화센터 노출 정책만 독립적으로 조정할 수 있어야 한다.
+AUX_CHANGE_CENTER_KEYS = frozenset({
+    "BREAKEVEN",
+    "TERMPREM",
+    "BBBOAS",
+    "AOAS",
+    "CPSPREAD",
+    "NFCI",
+    "STLFSI",
+})
+# Telegram은 30년 동일 만기 구성과 10년 Term Premium을 별도 블록에서 보여준다.
+TELEGRAM_CONFIRM_AUX_ORDER = ["BREAKEVEN", "BBBOAS", "AOAS", "CPSPREAD"]
 LEGACY_AUX_ORDER = ["IGOAS"]
 AUX_ORDER = VISIBLE_AUX_ORDER + LEGACY_AUX_ORDER
 ENGINE_AUX_ORDER = [k for k in CONFIRM_AUX_ORDER if AUX_SERIES[k].use_in_engine]

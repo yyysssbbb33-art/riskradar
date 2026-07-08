@@ -15,12 +15,18 @@ import pandas as pd
 from . import axis_engine, cache_store, interpretation_engine
 from . import config as C
 from . import aux_config as AC
+from . import rate_composition as RC
 from .display_text import (LABEL_1M, LABEL_3M, LABEL_3Y, LABEL_5Y, LABEL_10Y,
                            aux_name, axis_name, core_name, lens_name, plain_language, state_name)
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .interpretation_cards import get_interpretation_card
 from .aux_interpretation_cards import get_aux_interpretation_card
 from .credit_lens_card import HY_BBB_CARD
+from .credit_timeline import (
+    build_credit_timeline,
+    render_credit_timeline_markdown,
+    render_past_credit_episodes_markdown,
+)
 from .aux_detail_view import render_aux_detail
 from .indicator_detail_view import render_indicator_detail
 from .relationship_guide import RELATIONSHIP_GUIDE
@@ -72,7 +78,12 @@ _UI_DATA_COMPATIBLE_VERSIONS = {
     # v0.6.2는 기존 시장 판정 산출물을 유지하고 권위 있는 decision snapshot/diff를 추가한다.
     "0.6.2": {"0.6.0", "0.6.1", "0.6.2"},
     # v0.7.0은 v0.6.2 판정 산출물을 그대로 읽는 변화 중심 UI다.
+    # v0.7.1은 v0.7.0 판정 산출물과 호환하며 동일 만기 금리 구성 artifact를 선택적으로 읽는다.
     "0.7.0": {"0.6.2", "0.7.0"},
+    # v0.7.1은 새 금리 구성 artifact가 없으면 해당 패널만 안내문으로 대체한다.
+    "0.7.1": {"0.7.0", "0.7.1"},
+    # v0.7.2는 기존 신용 엔진 기록을 읽는 UI 계층만 추가한다.
+    "0.7.2": {"0.7.0", "0.7.1", "0.7.2"},
 }
 
 
@@ -88,7 +99,7 @@ GUIDE_INTRO = r"""
 RiskRadar는 미국 시장을 **주식시장 변동성·기업 자금 부담·경기 흐름·금리 움직임**으로 나눠 보는 계기판입니다. 하나의 점수로 시장을 단정하지 않고, 지금 어떤 부분이 움직이는지와 무엇을 더 확인해야 하는지 보여줍니다.
 
 1. **한눈에 보기**에서 현재 상황, 이전 데이터와 비교 변화, 계속 이어지는 변화, 다음에 볼 것을 봅니다.
-2. **기업 신용**에서 HY·BBB·A·CP 중 어디까지 움직이고 무엇이 남아 있는지 범위 지도로 봅니다.
+2. **기업 신용**에서 HY·BBB·A·CP 중 어디까지 움직였는지 범위 지도와 최근 90일 타임라인, 과거 에피소드로 봅니다.
 3. **흐름과 차트**에서 지난 30일 과정과 선택 지표의 실제 원자료 흐름을 봅니다.
 4. **비교**에서 전체 핵심 지표와 같은 날짜 기준 결과를 확인합니다.
 5. **지표 설명**에서 핵심 6개·HY-BBB 해석 기준·함께 볼 지표 5개·외부 참고 2개의 읽는 법을 자세히 봅니다.
@@ -114,7 +125,7 @@ BOARD_HELP = r"""
 
 먼저 **신용등급 낮은 기업의 추가 금리**와 **주식시장 예상 변동성(VIX)**을 봅니다. 주식시장 변동성만 커지는지, 기업들이 회사채를 발행할 때 더 높은 금리를 요구받는지도 같이 확인합니다.
 
-그다음 **2년·30년 국채금리와 물가 영향을 뺀 10년 금리**가 어느 쪽으로 움직이는지 봅니다. 마지막으로 **10년 금리와 3개월 금리의 관계**는 현재 시장 불안과 따로 떼어 경기 흐름의 배경으로 봅니다.
+그다음 **30년 동일 만기 구성**에서 30년 명목금리 변화가 30년 실질금리와 30년 명목−실질 금리차에서 각각 얼마나 나타났는지 봅니다. **2년 금리**는 같은 약 1개월 창의 곡선 움직임을 확인하고, **10년 Term Premium과 10년 구간 지표**는 별도 참고 맥락으로 봅니다. 마지막으로 **10년 금리와 3개월 금리의 관계**는 현재 시장 불안과 따로 떼어 경기 흐름의 배경으로 봅니다.
 
 - `상위 18% 구간`은 위험확률이 아니라 과거 값 중 높은 쪽 18% 안에 있다는 뜻입니다.
 - `하위 13% 구간`은 과거 값 중 낮은 쪽 13% 안에 있다는 뜻입니다.
@@ -130,11 +141,11 @@ EASY_GLOSSARY = r"""
 | **투자등급 경계 기업의 추가 금리** | 투자등급 중 가장 낮은 쪽 기업이 더 얹어줘야 하는 금리 | 부담이 저신용 기업을 넘어 투자등급 경계선까지 이어지는지 확인 |
 | **A등급 기업의 추가 금리** | 투자등급 경계를 넘어 A등급 기업도 더 얹어줘야 하는 금리 | 회사채 부담 변화가 투자등급 안쪽까지 넓어지는지 확인 |
 | **기업 신용도에 따른 단기자금 금리 차이** | 신용도가 낮은 기업과 높은 기업의 30일 자금조달 금리 차이 | 단기 기업자금시장에서도 신용도 차별이 커지는 방향 |
-| **채권시장이 보는 10년 물가 예상** | 일반 국채와 물가에 따라 원금이 조정되는 국채의 금리 차이 | 시장이 장기 물가 보상을 더 높게 요구하는 방향 |
-| **장기채 추가 보상** | 장기채를 오래 들고 있을 불확실성 때문에 시장이 더 요구하는 보상 | 장기채 수요·공급이나 불확실성 요인을 더 확인 |
+| **10년 명목−실질 금리차** | 10년 일반 국채와 물가연동 국채의 금리 차이 | 10년 구간의 물가보상 proxy가 커지는 방향 |
+| **장기채 추가 보상** | 10년 장기채를 오래 들고 있을 때 요구하는 보상의 모형 추정치 | 30년 구성에 더하지 않고 별도 맥락으로 참고 |
 | **미국 금융시장 전반의 자금 사정** | 여러 시장과 금융기관을 한꺼번에 본 외부 참고 지표 | 전반적으로 돈을 빌리고 위험을 감수하기가 더 어려워지는 방향 |
 | **미국 금융시장 전반의 불안** | 여러 금융시장이 함께 불안해지는지 본 외부 참고 지표 | 시장 전반의 불안이 높아지는 방향 |
-| **물가 영향을 뺀 10년 금리** | 물가 영향을 빼고 본 장기금리 | 미래에 받을 돈을 오늘 가치로 계산할 때 더 많이 깎는 방향 |
+| **물가 영향을 뺀 10년 금리** | 물가연동 10년 국채에서 계산한 실질금리 | 10년 구간의 실질금리 부담이 커지는 방향 |
 
 `추가 금리`는 기업이 실제로 내는 대출금리 자체가 아닙니다. **같은 기간의 미국 국채보다 회사채가 얼마나 더 높은 금리를 요구받는지**를 뜻합니다.
 """
@@ -585,6 +596,9 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
     today_summary_md = render_today_summary_markdown(effective_dq, aux_df)
     today_md = render_today_markdown(effective_dq, aux_df)
     credit_md = render_credit_episode_markdown(effective_dq)
+    credit_timeline = build_credit_timeline(snapshot.credit_node_history, snapshot.credit_episodes)
+    credit_timeline_md = render_credit_timeline_markdown(credit_timeline)
+    past_credit_episodes_md = render_past_credit_episodes_markdown(credit_timeline)
     monthly_md = render_monthly_markdown(
         snapshot.history, aux_df, snapshot.credit_node_history,
         (effective_dq.get("credit_episode") or {}),
@@ -628,6 +642,7 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         "data_health": render_data_health_badge(snapshot.status, snapshot.data_quality, snapshot.decision_diff, snapshot.load_errors),
         "today_one_line": render_today_one_line_markdown(effective_dq),
         "recent_changes": render_recent_changes_markdown(snapshot.decision_diff),
+        "rate_composition": RC.render_markdown(snapshot.rate_composition),
         "remaining_changes": render_remaining_changes_markdown(snapshot.decision_snapshot, effective_dq),
         "next_checks": render_next_checks_markdown(effective_dq, snapshot.decision_snapshot),
         "evidence_balance": render_evidence_balance_markdown(effective_dq, aux_df),
@@ -641,6 +656,8 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         "today_summary": today_summary_md,
         "today": today_md,
         "credit": credit_md,
+        "credit_timeline": credit_timeline_md,
+        "past_credit_episodes": past_credit_episodes_md,
         "history_source": history_source_md,
         "monthly": monthly_md,
         "history": snapshot.history,
@@ -707,6 +724,7 @@ def build_app():
         with gr.Tab("한눈에 보기"):
             today_one_line_component = gr.Markdown(initial["today_one_line"])
             recent_changes_component = gr.Markdown(initial["recent_changes"])
+            rate_composition_component = gr.Markdown(initial["rate_composition"])
             with gr.Row():
                 remaining_changes_component = gr.Markdown(initial["remaining_changes"])
                 next_checks_component = gr.Markdown(initial["next_checks"])
@@ -750,6 +768,10 @@ def build_app():
             gr.Markdown("## 기업 신용 범위 지도")
             gr.Markdown("화살표로 순서를 가정하지 않고, **어느 실제 시장이 변화하고 있는지**만 보여줍니다.")
             credit_map_component = gr.HTML(initial["credit_map"])
+            gr.Markdown("---")
+            credit_timeline_component = gr.Markdown(initial["credit_timeline"])
+            with gr.Accordion("과거 에피소드 보기", open=False):
+                past_credit_episodes_component = gr.Markdown(initial["past_credit_episodes"])
             with gr.Accordion("기업 신용 변화 흐름 상세 보기", open=False):
                 credit_component = gr.Markdown(initial["credit"])
             with gr.Accordion("기업 신용 해석 기준·함께 볼 지표 상세 가이드 보기", open=False):
@@ -845,6 +867,7 @@ def build_app():
             data_quality_json_component,
             today_one_line_component,
             recent_changes_component,
+            rate_composition_component,
             remaining_changes_component,
             next_checks_component,
             evidence_balance_component,
@@ -854,6 +877,8 @@ def build_app():
             *[detail_components[k] for k in C.SERIES_ORDER],
             today_component,
             credit_map_component,
+            credit_timeline_component,
+            past_credit_episodes_component,
             credit_component,
             *[aux_detail_components[k] for k in AC.VISIBLE_AUX_ORDER],
             history_source_component,
@@ -885,6 +910,7 @@ def build_app():
                 payload["data_quality_json"],
                 payload["today_one_line"],
                 payload["recent_changes"],
+                payload["rate_composition"],
                 payload["remaining_changes"],
                 payload["next_checks"],
                 payload["evidence_balance"],
@@ -894,6 +920,8 @@ def build_app():
                 *[payload["details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in C.SERIES_ORDER],
                 payload["today"],
                 payload["credit_map"],
+                payload["credit_timeline"],
+                payload["past_credit_episodes"],
                 payload["credit"],
                 *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in AC.VISIBLE_AUX_ORDER],
                 payload["history_source"],

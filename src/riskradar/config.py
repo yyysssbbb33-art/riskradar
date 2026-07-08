@@ -22,6 +22,12 @@ SPAN_GUARD_60OBS_DAYS = 120
 
 CHANGE_LOOKBACKS = (20, 60)  # 관측일 개수 기준
 
+# v0.7.1 장기금리 구성. 곡선 분류는 반드시 같은 20관측 창을 사용한다.
+# 60관측은 구성 변화의 배경 맥락만 보여주고 곡선 분류에는 섞지 않는다.
+RATE_COMPOSITION_LOOKBACK_OBS = 20
+RATE_COMPOSITION_CONTEXT_LOOKBACK_OBS = 60
+RATE_COMPOSITION_MATERIAL_BP = 10.0  # C등급 운영값: 미세한 금리·기울기 변화 억제
+
 
 @dataclass(frozen=True)
 class Series:

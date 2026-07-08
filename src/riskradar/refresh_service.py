@@ -1,7 +1,7 @@
 """refresh 오케스트레이션 (GitHub Actions 또는 CLI가 호출).
 
 반환 status: success | partial_success | failed
-Telegram 실패는 데이터 데이터 업데이트 성공을 깨지 않는다.
+Telegram 실패는 데이터 업데이트 성공을 깨지 않는다.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from . import credit_episode
 from . import decision_snapshot as DS
 from . import interpretation_engine
 from . import fred_client, pipeline
+from . import rate_composition as RC
 from . import telegram_client as tg
 from . import transforms as T
 from .version import __version__
@@ -97,8 +98,9 @@ def _synced_df(frames: dict[str, pd.DataFrame], snap: dict) -> pd.DataFrame:
 
 def run_refresh(fetcher: Callable[[], dict] | None = None,
                 aux_fetcher: Callable[[], dict] | None = None,
+                rate_fetcher: Callable[[], object] | None = None,
                 store=None, notify: bool = True) -> dict:
-    """전체 refresh. fetcher/aux_fetcher/store 주입으로 오프라인 테스트 가능."""
+    """전체 refresh. fetcher/aux_fetcher/rate_fetcher/store 주입으로 오프라인 테스트 가능."""
     from . import cache_store
     store = store or cache_store.get_store()
     now = _now_kst()
@@ -132,6 +134,26 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                     # 필수 시리즈에 과거 데이터조차 없으면 실패
                     raise RuntimeError(f"no last-good raw for {key}")
 
+        # 2b) v0.7.1 30년 실질금리 전용 입력. core/aux 판정에는 넣지 않는다.
+        # 테스트에서 core fetcher만 주입한 기존 호출은 외부 네트워크를 건드리지 않는다.
+        rate_fetch_error = None
+        dfii30_raw = pd.DataFrame(columns=["date", "value_raw"])
+        try:
+            rate_result = rate_fetcher() if rate_fetcher is not None else (
+                RC.fetch_dfii30() if fetcher is None else None
+            )
+            if isinstance(rate_result, pd.DataFrame):
+                dfii30_raw = rate_result[["date", "value_raw"]].copy()
+            elif rate_result is not None and getattr(rate_result, "ok", False):
+                dfii30_raw = rate_result.df[["date", "value_raw"]].copy()
+            elif rate_result is not None:
+                rate_fetch_error = str(getattr(rate_result, "error", "DFII30 fetch failed"))
+            else:
+                rate_fetch_error = "DFII30 fetch not supplied"
+        except Exception as e:  # noqa: BLE001 - 전용 설명 패널 실패는 핵심 6개를 깨지 않음
+            rate_fetch_error = f"{type(e).__name__}: {e}"
+            log.warning("DFII30 rate component fetch failed: %s", e)
+
         # 3) compute
         out = pipeline.compute_all(raw_by_key)
         matrix, chart, snap = out["signal_matrix"], out["chart_data"], out["synced"]
@@ -159,6 +181,17 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
         # 보조지표 일시 실패 시 직전 성공값을 가져오되 최신성 표시는 다시 계산한다.
         # 오래된 값은 해석 엔진이 자동으로 집계에서 제외한다.
         aux_matrix = _carry_forward_aux(aux_matrix, store, now)
+
+        # 3b-2) 동일 만기 구성은 한 번만 계산해 저장·UI·Telegram이 같은 결과를 읽는다.
+        rate_series = RC.build_composition_series(raw_by_key.get("DGS30"), dfii30_raw)
+        rate_summary = RC.build_summary(
+            rate_series,
+            raw_by_key.get("DGS30"),
+            raw_by_key.get("DGS2"),
+            aux_matrix,
+            fetch_error=rate_fetch_error,
+            stale_core=set(stale),
+        )
 
         # 범위·지속 엔진은 최신값 한 점이 아니라 BBB/A/CP의 과거 경로가 필요하다.
         # 이번 수집이 실패했지만 직전 실제 성공값이 아직 stale이 아니면, 같은 원칙으로
@@ -237,7 +270,7 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             previous_finder = getattr(store, "find_previous_decision_snapshot", None)
             previous_decision = previous_finder(cache_version) if previous_finder is not None else None
             decision_diff = DS.compare_decision_snapshots(previous_decision, decision_snap)
-        except Exception as e:  # noqa: BLE001 - 판정 기록 실패가 핵심 데이터 데이터 업데이트을 막지 않음
+        except Exception as e:  # noqa: BLE001 - 판정 기록 실패가 핵심 데이터 업데이트를 막지 않음
             decision_tracking_error = f"{type(e).__name__}: {e}"
             log.warning("decision snapshot/diff failed: %s", e)
 
@@ -251,6 +284,8 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             "aux_raw": _aux_raw_long(aux_raw_frames, started),
             "credit_episode_nodes": (credit_result.node_history if credit_result is not None else pd.DataFrame()),
             "credit_episodes": (credit_result.episodes if credit_result is not None else pd.DataFrame()),
+            "rate_composition_series": rate_series,
+            "rate_composition": rate_summary,
             "decision_snapshot": decision_snap,
             "decision_diff": decision_diff,
             "data_quality": {
@@ -279,6 +314,13 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                 "axes": axes,
                 "readings": reading_dicts,
                 "credit_episode": credit_quality,
+                "rate_composition": {
+                    "status": rate_summary.get("status"),
+                    "schema_version": rate_summary.get("schema_version"),
+                    "observation_date": rate_summary.get("observation_date"),
+                    "fetch_error": rate_summary.get("fetch_error"),
+                    "source_status": rate_summary.get("source_status"),
+                },
                 "decision_tracking": {
                     "snapshot_format_version": decision_snap.get("snapshot_format_version"),
                     "schemas": decision_snap.get("schemas", {}),
@@ -328,12 +370,14 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                        cache_version, matrix, snap, failed, stale,
                        axes=axes, readings=reading_dicts, aux_df=aux_matrix,
                        credit_episode=(credit_result.to_quality_dict() if credit_result is not None else None),
+                       rate_composition=rate_summary,
                    )
                    if stale else
                    tg.build_success(
                        batch, cache_version, matrix, snap, stale,
                        axes=axes, readings=reading_dicts, aux_df=aux_matrix,
                        credit_episode=(credit_result.to_quality_dict() if credit_result is not None else None),
+                       rate_composition=rate_summary,
                    ))
             sent = tg.send(msg)
             status["telegram_sent"] = sent

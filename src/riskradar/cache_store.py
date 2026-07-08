@@ -26,9 +26,12 @@ log = logging.getLogger(__name__)
 ARTIFACT_PARQUETS = ["raw_fred", "signal_matrix", "synced_snapshot", "chart_data"]
 # 하위호환: 옛 캐시 버전에는 없을 수 있는 옵셔널 아티팩트.
 # _verify/필수 load 대상이 아니며, 없으면 빈 DataFrame으로 관용 처리한다.
-OPTIONAL_ARTIFACTS = ["aux_signal_matrix", "aux_raw", "credit_episode_nodes", "credit_episodes"]
+OPTIONAL_ARTIFACTS = [
+    "aux_signal_matrix", "aux_raw", "credit_episode_nodes", "credit_episodes",
+    "rate_composition_series",
+]
 # v0.6.2부터 시작하는 권위 있는 판정 기록. 옛 버전은 백필하지 않는다.
-OPTIONAL_JSON_ARTIFACTS = ["decision_snapshot", "decision_diff"]
+OPTIONAL_JSON_ARTIFACTS = ["decision_snapshot", "decision_diff", "rate_composition"]
 # 최근 흐름·diff 감사를 위해 날짜와 개수를 함께 본다.
 # - 최근 KEEP_MIN_DAYS 안의 버전은 우선 보존
 # - 실행이 드물어도 최소 KEEP_LAST_N개는 보존

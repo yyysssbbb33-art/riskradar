@@ -43,7 +43,8 @@ def test_dgs30_detail_shows_current_aux_result_and_alternative_branches():
     md = render_indicator_detail(
         row, {}, "한줄 해석", frames=frames, aux_df=aux, matrix=matrix
     )
-    assert "채권시장이 보는 10년 물가 예상" in md
+    assert "10년 명목−실질 금리차" in md
+    assert "30년 동일 만기" in md
     assert "현재 결과: 오르는 중" in md
     assert "결과가 달라지면" in md
     assert "내리면:" in md

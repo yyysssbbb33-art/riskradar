@@ -3,7 +3,7 @@
 목적
 - 순서를 억지로 주장하지 않고, 현재 어떤 실제 시장이 변화하고 있는지 본다.
 - 실제 시장 노드는 HY / BBB / A / CP 네 개만 사용한다.
-- HY-BBB는 별도 시장이 아니라 저신용 집중도를 읽는 해석 기준다.
+- HY-BBB는 별도 시장이 아니라 저신용 집중도를 읽는 해석 기준이다.
 - VIX는 신용 사슬의 노드가 아니라 변화 흐름 시작 무렵의 주식시장 맥락이다.
 
 v0.6.0 원칙
@@ -394,7 +394,7 @@ def _build_episode_records(node_histories: dict[str, pd.DataFrame], cfg: CreditE
                 episodes.append(current)
                 current = None
 
-        # 휴면 뒤 같은 노드의 재확대도 새 변화 흐름로 분리한다. 계속되는 변화는 주석으로 남긴다.
+        # 휴면 뒤 같은 노드의 재확대도 새 변화 흐름으로 분리한다. 계속되는 변화는 주석으로 남긴다.
         if current is not None and current["state"] == "dormant" and expansion_activity_nodes and not confirmed_nodes:
             prior_residual = []
             for node in current["participants"]:
@@ -597,7 +597,7 @@ def _cp_calendar_context(nodes: dict[str, dict]) -> dict:
 def build_credit_episode(node_frames: dict[str, pd.DataFrame],
                          vix_frame: pd.DataFrame | None = None,
                          cfg: CreditEpisodeCfg = DEFAULT_CFG) -> CreditEpisodeResult:
-    """네 시장 노드의 최근 경로를 범위·지속 변화 흐름로 읽는다.
+    """네 시장 노드의 최근 경로를 범위·지속 변화 흐름으로 읽는다.
 
     node_frames 값 단위는 모두 bp여야 한다.
     """

@@ -54,7 +54,7 @@ def test_renders_axes_and_reading():
 
 def test_aux_directions_shown():
     md = render_today_markdown(_dq(), _aux_df())
-    assert "채권시장이 예상하는 10년 물가상승률(10Y Breakeven)" in md and "오르는 중" in md
+    assert "10년 명목−실질 금리차(10Y Breakeven)" in md and "오르는 중" in md
     assert "확인 불가" in md  # 장기채 보유에 요구되는 추가 보상(10Y Term Premium)
 
 

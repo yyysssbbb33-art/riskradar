@@ -316,7 +316,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     if current:
         lines += ["", "### 기업 신용 범위와 지속"]
         lines.append(f"- **변화 흐름 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}")
-        lines.append(f"- **현재 변화가 나타난 곳:** {current.get('scope_text', '확인 불가')}")
+        lines.append(f"- **현재 변화 범위:** {current.get('scope_text', '확인 불가')}")
         for key in ("HY", "BBB", "A", "CP"):
             row = nodes.get(key) or {}
             if row.get("available"):
@@ -340,7 +340,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
                     lines.append("- **최근 30일 상태 전환:**")
                     for dt, node, label in sorted(transitions)[-6:]:
                         lines.append(f"  - {dt.date().isoformat()} · {node}: {label}")
-        lines.append("> 이 부분은 현재 변화가 나타난 곳와 지속을 보여주며, 어느 시장이 원인인지나 실제 선후행을 주장하지 않습니다.")
+        lines.append("> 이 부분은 현재 변화 범위와 지속 상태를 보여주며, 어느 시장이 원인인지나 실제 선후행을 주장하지 않습니다.")
 
     # 7) 다음에 볼 것
     lines += ["", "### 지금부터 확인할 것"]
@@ -361,8 +361,8 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
         tp = _aux_direction_text(aux_df, "TERMPREM")
         lines.append(
             f"- 2년 금리 하락·30년 금리 상승이 엇갈렸습니다. 현재 **{aux_name('BREAKEVEN')}**은 `{be}`, "
-            f"**{aux_name('TERMPREM')}**은 `{tp}`입니다. 물가 예상이 오르면 물가 요인 설명이, 장기채 추가 보상이 오르면 "
-            "장기채 수요·공급이나 오래 보유하는 부담 설명이 더 잘 맞습니다."
+            f"**{aux_name('TERMPREM')}**은 `{tp}`입니다. 두 값은 10년 구간의 참고 맥락이며, "
+            "30년 금리 변화의 직접 구성은 첫 화면의 30년 동일 만기 패널을 우선합니다."
         )
         added += 1
 

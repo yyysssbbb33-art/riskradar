@@ -52,7 +52,7 @@ def _fmt_change(row) -> str:
 
 
 _AUX_GROUPS = [
-    ("장기금리가 왜 움직이나", ("BREAKEVEN", "TERMPREM")),
+    ("10년 구간 참고 맥락", ("BREAKEVEN", "TERMPREM")),
     ("기업 신용 부담이 어디에서 나타나나", ("BBBOAS", "AOAS")),
     ("단기 자금시장도 영향을 받고 있나", ("CPSPREAD",)),
     ("외부 참고 지표", ("NFCI", "STLFSI")),
@@ -66,7 +66,7 @@ def _reference_level_text(key: str, row) -> str:
         return "현재 수준 비교 불가"
     pct = float(pct)
     if 40.0 <= pct <= 60.0:
-        return "평소 변화가 나타난 곳"
+        return "평소 범위"
     if key == "NFCI":
         return "평소보다 자금 사정이 어려워지는 쪽" if pct > 60.0 else "평소보다 자금 사정이 느슨한 쪽"
     if key == "STLFSI":
@@ -120,8 +120,8 @@ def _aux_section(aux_df: pd.DataFrame) -> str:
         )
 
     lines = [
-        "### 원인을 구분할 때 같이 보는 지표",
-        "함께 볼 지표는 원인, 회사채 부담이 나타나는 곳, 단기 자금시장 변화를 구분할 때 씁니다. 외부 참고 지표는 공식 종합 지표가 같은 방향인지 마지막에 확인합니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
+        "### 함께 보는 참고 지표",
+        "함께 볼 지표는 10년 금리 구간의 별도 맥락, 회사채 부담이 나타나는 곳, 단기 자금시장 변화를 구분할 때 씁니다. 외부 참고 지표는 공식 종합 지표가 같은 방향인지 마지막에 확인합니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
         "",
     ]
     old_name_to_key = {
@@ -160,14 +160,14 @@ def _credit_episode_section(dq: dict) -> str:
     vix = credit.get("vix_context") or {}
     state = str(episode.get("state", "none"))
     if not current:
-        return "### 기업 신용 변화 흐름\n현재 캐시에는 변화가 나타난 곳·지속 엔진 결과가 없습니다."
+        return "### 기업 신용 변화 흐름\n현재 캐시에는 기업 신용 범위·지속 결과가 없습니다."
 
     lines = [
         "### 기업 신용 변화 흐름",
         "이 부분은 누가 먼저였는지 추정하지 않고, **어느 시장에서 변화가 나타나고 무엇이 계속 이어지는지**를 봅니다.",
         "",
         f"- **변화 흐름 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}",
-        f"- **현재 변화가 나타난 곳:** {current.get('scope_text', '확인 불가')}",
+        f"- **현재 변화 범위:** {current.get('scope_text', '확인 불가')}",
     ]
     if episode.get("started_at"):
         lines.append(f"- **현재 변화 흐름 시작:** {episode.get('started_at')} · 마지막 의미 있는 변화 {episode.get('last_meaningful_activity_at') or '확인 불가'}")
@@ -183,8 +183,8 @@ def _credit_episode_section(dq: dict) -> str:
             lines.append(f"- **{key}:** 확인 불가")
             continue
         extra = []
-        if row.get("estimated_onset"):
-            extra.append(f"변화 시작 {row.get('estimated_onset')} 무렵")
+        if row.get("confirmed_at"):
+            extra.append(f"상승 변화 확인 {row.get('confirmed_at')}")
         if row.get("residual_change") is not None:
             extra.append(f"기준선 대비 {row.get('residual_change') / 100.0:+.2f}%p 남음")
         suffix = " · " + " · ".join(extra) if extra else ""
@@ -209,14 +209,14 @@ def _credit_episode_section(dq: dict) -> str:
         ]
     lines += [
         "",
-        "> HY-BBB 차이는 별도 시장이 아니라 HY와 BBB의 상대적 차이를 보는 해석 기준입니다. 변화가 나타난 곳 엔진의 변화 시장으로 두 번 세지 않습니다.",
+        "> HY-BBB 차이는 별도 시장이 아니라 HY와 BBB의 상대적 차이를 보는 해석 기준입니다. 기업 신용 범위 엔진에서 별도 시장으로 두 번 세지 않습니다.",
     ]
     return "\n".join(lines)
 
 
 
 def render_credit_episode_markdown(data_quality: dict | None) -> str:
-    """현재 기업 신용 변화가 나타난 곳·지속 결과만 독립적으로 렌더링한다."""
+    """현재 기업 신용 범위·지속 결과만 독립적으로 렌더링한다."""
     return plain_language(_credit_episode_section(data_quality or {}))
 
 def _axes_section(axes: dict) -> str:
@@ -346,7 +346,7 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
     """오늘의 해석 탭 첫 화면용 핵심 요약.
 
     전체 확인 근거와 결과별 대안은 기존 ``render_today_markdown``에 남겨 두고,
-    첫 화면에는 현재 변화가 나타난 곳·움직이는 영역·주요 조합만 압축해서 보여준다.
+    첫 화면에는 현재 변화 범위·움직이는 영역·주요 조합만 압축해서 보여준다.
     """
     dq = dq or {}
     lines = [
@@ -364,7 +364,7 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
             "",
             "## 기업 신용",
             f"- **변화 흐름:** {episode.get('state_label', '현재 변화 흐름 없음')}",
-            f"- **변화가 나타난 곳:** {current.get('scope_text', '확인 불가')}",
+            f"- **변화 범위:** {current.get('scope_text', '확인 불가')}",
         ]
         lens_label = str(lens.get("label") or "")
         if lens_label and lens_label != "확인 불가":

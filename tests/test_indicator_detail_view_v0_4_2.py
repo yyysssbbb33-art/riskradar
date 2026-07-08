@@ -49,7 +49,7 @@ def test_relevant_combo_surfaces_supported_and_weakened_explanations():
 def test_combo_indicator_mapping_covers_all_current_combo_ids():
     expected = {
         "rates_30up_2down", "rates_30down_2up", "rates_broad_up", "rates_broad_down",
-        "nominal_real_up", "nominal_up_real_not", "two_down_credit_widening",
+        "two_down_credit_widening",
         "two_down_credit_quiet", "vol_leads", "credit_only", "vol_credit_together",
         "vol_calm_credit_persist", "cycle_renorm_credit_wide",
         "cycle_renorm_credit_quiet", "long_inv_2y_down",

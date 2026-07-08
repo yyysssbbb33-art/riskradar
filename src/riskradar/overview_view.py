@@ -1,4 +1,4 @@
-"""v0.7.0 변화 중심 첫 화면과 모바일 카드 렌더링.
+"""v0.7.1 변화 중심 첫 화면과 모바일 카드 렌더링.
 
 판정은 만들지 않는다. v0.6.2가 저장한 권위 있는 decision snapshot/diff와
 현재 데이터 산출물을 사용자에게 빠르게 읽히는 형태로만 바꾼다.
@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from . import aux_config as AC
 from . import config as C
 from .display_text import aux_name, axis_name, core_name, plain_language, state_name
 from .formatting import fmt_change, fmt_value
@@ -154,17 +155,38 @@ def _friendly_event(event: dict) -> str:
         return f"**{name}**: {plain_language(str(previous))} → {plain_language(str(current))}"
     if section == "credit_episode":
         if transition_type == "observation_clock_transition":
-            return "**기업 신용 변화 흐름**가 관측 흐름상 휴면 또는 종료 상태로 바뀌었습니다."
-        return "**기업 신용 변화 흐름**의 상태 또는 변화가 나타난 곳이 바뀌었습니다."
+            return "관측 기간이 지나면서 **기업 신용 변화 흐름**이 휴면 또는 종료 상태로 바뀌었습니다."
+        return "**기업 신용 변화 흐름**의 상태 또는 변화 범위가 바뀌었습니다."
     return plain_language(str(event.get("message", "변화가 기록됐습니다.")))
+
+
+def _is_change_center_event(event: dict) -> bool:
+    """일반 사용자 변화센터에 노출할 사건인지 판정한다.
+
+    권위 있는 decision diff와 운영 진단은 모든 aux를 보존한다. 여기서는
+    일반 사용자에게 먼저 밀어줄 변화만 별도 표면 정책으로 거른다.
+    """
+    if str(event.get("section", "")) != "aux":
+        return True
+    return str(event.get("key", "")) in AC.AUX_CHANGE_CENTER_KEYS
 
 
 def render_recent_changes_markdown(diff: dict | None) -> str:
     diff = diff or {}
     status = str(diff.get("status", ""))
-    market = diff.get("market_transitions") or []
-    data_events = diff.get("data_quality_transitions") or []
-    recovery = diff.get("recovery_gap_events") or []
+    # 숨은 aux 사건이 표시 슬롯을 먹지 않도록 반드시 slice 전에 필터한다.
+    market = [
+        event for event in (diff.get("market_transitions") or [])
+        if _is_change_center_event(event)
+    ]
+    data_events = [
+        event for event in (diff.get("data_quality_transitions") or [])
+        if _is_change_center_event(event)
+    ]
+    recovery = [
+        event for event in (diff.get("recovery_gap_events") or [])
+        if _is_change_center_event(event)
+    ]
     boundaries = diff.get("schema_boundaries") or []
 
     lines = ["## 새로 달라진 점"]
@@ -368,7 +390,7 @@ def render_credit_range_map_html(data_quality: dict | None) -> str:
     lens_label = _text(lens.get("label"), "확인 불가")
     return (
         '<div class="rr-credit-map">'
-        f'<div class="rr-credit-summary"><strong>현재 변화가 나타난 곳</strong><span>{escape(scope)}</span>'
+        f'<div class="rr-credit-summary"><strong>현재 변화 범위</strong><span>{escape(scope)}</span>'
         f'<small>현재 흐름: {escape(episode_label)}</small></div>'
         '<div class="rr-credit-group"><div class="rr-group-title">회사채</div><div class="rr-credit-row">'
         + node_card("HY") + node_card("BBB") + node_card("A") +

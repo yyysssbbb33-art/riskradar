@@ -600,8 +600,8 @@ def compare_decision_snapshots(previous: dict | None, current: dict) -> dict:
                     key="episode",
                     previous={"episode_id": pep.get("episode_id"), "state": pep.get("state"), "participants": pep.get("participants")},
                     current={"episode_id": cep.get("episode_id"), "state": cep.get("state"), "participants": cep.get("participants")},
-                    message=("신용 변화 흐름가 관측 타임라인 경과로 상태 전환했습니다."
-                             if observation_clock else "신용 변화 흐름의 상태 또는 변화가 나타난 곳이 바뀌었습니다."),
+                    message=("관측 기간이 지나면서 기업 신용 변화 흐름의 상태가 바뀌었습니다."
+                             if observation_clock else "기업 신용 변화 흐름의 상태 또는 변화 범위가 바뀌었습니다."),
                 ))
             else:
                 result["diagnostics"].append({

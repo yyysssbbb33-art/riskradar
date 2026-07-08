@@ -130,9 +130,21 @@ def test_telegram_shows_all_results_then_interpretation():
         "weakened_ids": [],
         "uncertainty": "추가 확인 필요",
     }]
+    rate_composition = {
+        "status": "ok",
+        "primary": {
+            "DGS30_change_bp": 24.0,
+            "DFII30_change_bp": 15.0,
+            "INFLCOMP30_change_bp": 9.0,
+        },
+        "curve": {
+            "text": "장기금리는 오르고 단기금리는 내려 곡선이 가팔라졌습니다(장·단기 엇갈림)."
+        },
+        "term_premium": {"status": "ok", "change_1m_bp": 6.0, "direction": "상승"},
+    }
     text = TG.build_success(
         "2026-07-06 08:30 KST", "cv", _matrix(), {"synced_date": "2026-07-03"}, [],
-        axes=axes, readings=readings, aux_df=_aux_df(),
+        axes=axes, readings=readings, aux_df=_aux_df(), rate_composition=rate_composition,
     )
 
     # 핵심 6개: 값 + 1개월/3개월 변화
@@ -140,8 +152,11 @@ def test_telegram_shows_all_results_then_interpretation():
     assert "HY OAS: 3.45%p · +0.12%p / +0.28%p" in text
     assert "30Y: 4.72% · +0.24%p / +0.41%p" in text
 
-    # 확인지표 5개 + 외부 참고 2개: 값 + 1개월 변화
+    # 30년 동일 만기 구성은 별도 블록이다. 10년 breakeven은 교차 만기 참고로 유지하고,
+    # 10년 Term Premium은 전용 별도 맥락 줄에서 보여 중복하지 않는다.
+    assert "30Y 명목 +24.0bp = 30Y 실질 +15.0bp + 명목−실질 금리차 +9.0bp" in text
     assert "10Y Breakeven: 2.36% · +0.07%p" in text
+    assert text.count("10Y Term Premium 별도 맥락") == 1
     assert "BBB OAS: 1.32%p · +0.14%p" in text
     assert "A OAS: 0.84%p · +0.03%p" in text
     assert "CP Spread: 0.46%p · +0.11%p" in text

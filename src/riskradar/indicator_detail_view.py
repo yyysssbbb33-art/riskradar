@@ -24,8 +24,6 @@ COMBO_CORE_KEYS: dict[str, tuple[str, ...]] = {
     "rates_30down_2up": ("DGS30", "DGS2"),
     "rates_broad_up": ("DGS30", "DGS2", "DFII10"),
     "rates_broad_down": ("DGS30", "DGS2"),
-    "nominal_real_up": ("DGS30", "DFII10"),
-    "nominal_up_real_not": ("DGS30", "DFII10"),
     "two_down_credit_widening": ("DGS2", "HYOAS"),
     "two_down_credit_quiet": ("DGS2", "HYOAS"),
     "vol_leads": ("VIX", "HYOAS"),

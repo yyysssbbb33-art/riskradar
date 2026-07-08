@@ -4,7 +4,7 @@
 - 숫자 결과를 먼저, 해석을 뒤에 보여준다.
 - 단일 위험점수·매매 조언·인과/선행 과장 표현을 만들지 않는다.
 - 핵심 6개 → HY-BBB 해석 기준 → 함께 볼 지표 → 외부 참고 → 범위·지속 해석 순서다.
-- Telegram 실패는 데이터 데이터 업데이트 성공을 깨지 않는다.
+- Telegram 실패는 데이터 업데이트 성공을 깨지 않는다.
 """
 from __future__ import annotations
 
@@ -129,6 +129,37 @@ def _lens_result_lines(credit_episode: dict | None) -> list[str]:
     ]
 
 
+def _rate_composition_lines(rate_composition: dict | None) -> list[str]:
+    summary = rate_composition or {}
+    lines = ["", "30년 금리 구성 (같은 만기 · 약 1개월)"]
+    if summary.get("status") != "ok":
+        return lines + ["• 30년 실질금리 구성 자료 확인 불가"]
+
+    primary = summary.get("primary") or {}
+    nominal = primary.get("DGS30_change_bp")
+    real = primary.get("DFII30_change_bp")
+    proxy = primary.get("INFLCOMP30_change_bp")
+
+    def bp(value):
+        return "확인 불가" if value is None else f"{float(value):+.1f}bp"
+
+    lines.append(f"• 30Y 명목 {bp(nominal)} = 30Y 실질 {bp(real)} + 명목−실질 금리차 {bp(proxy)}")
+    curve = summary.get("curve") or {}
+    if curve.get("text"):
+        lines.append(f"• 곡선: {curve['text']}")
+    lines.append("• 명목−실질 금리차는 물가보상 proxy이며 순수 기대인플레이션으로 보지 않음")
+
+    tp = summary.get("term_premium") or {}
+    if tp.get("status") == "ok":
+        lines.append(
+            f"• 10Y Term Premium 별도 맥락: 약 1개월 {bp(tp.get('change_1m_bp'))} · "
+            f"{_DIRECTION_TEXT.get(str(tp.get('direction', '판정불가')), '확인 불가')}"
+        )
+    else:
+        lines.append("• 10Y Term Premium 별도 맥락: 확인 불가")
+    return lines
+
+
 def _aux_row(aux_df: pd.DataFrame | None, key: str):
     if aux_df is None or aux_df.empty or "key" not in aux_df.columns:
         return None
@@ -240,7 +271,7 @@ def _reading_lines(readings: list[dict] | None) -> list[str]:
 
 def _credit_episode_lines(credit_episode: dict | None) -> list[str]:
     if not credit_episode:
-        return ["", "기업 신용 범위와 지속", "• 현재 변화가 나타난 곳·지속 결과를 확인할 수 없음"]
+        return ["", "기업 신용 범위와 지속", "• 현재 변화 범위·지속 결과를 확인할 수 없음"]
     current = credit_episode.get("current") or {}
     episode = current.get("episode") or {}
     nodes = current.get("nodes") or {}
@@ -284,6 +315,7 @@ def _build_summary(title: str, matrix: pd.DataFrame, synced: dict,
                    *, axes: dict | None = None, readings: list[dict] | None = None,
                    aux_df: pd.DataFrame | None = None,
                    credit_episode: dict | None = None,
+                   rate_composition: dict | None = None,
                    notice_lines: list[str] | None = None) -> str:
     from . import aux_config as AC
 
@@ -292,8 +324,9 @@ def _build_summary(title: str, matrix: pd.DataFrame, synced: dict,
         lines.extend(notice_lines)
         lines.append("")
     lines.extend(_core_result_lines(matrix))
+    lines.extend(_rate_composition_lines(rate_composition))
     lines.extend(_lens_result_lines(credit_episode))
-    lines.extend(_aux_result_lines(aux_df, AC.CONFIRM_AUX_ORDER, "확인 지표 (최신값 · 약 1개월)"))
+    lines.extend(_aux_result_lines(aux_df, AC.TELEGRAM_CONFIRM_AUX_ORDER, "확인 지표 (최신값 · 약 1개월)"))
     lines.extend(_aux_result_lines(aux_df, AC.EXTERNAL_AUX_ORDER, "외부 참고 지표 (최신값 · 약 1개월)", external=True))
     lines.extend(_credit_episode_lines(credit_episode))
     lines += ["", "여러 지표를 같이 보면"]
@@ -309,11 +342,13 @@ def build_success(batch_kst: str, cache_version: str, matrix: pd.DataFrame,
                   synced: dict, stale: list[str], *, axes: dict | None = None,
                   readings: list[dict] | None = None,
                   aux_df: pd.DataFrame | None = None,
-                  credit_episode: dict | None = None) -> str:
+                  credit_episode: dict | None = None,
+                  rate_composition: dict | None = None) -> str:
     del batch_kst, cache_version, stale  # 정상 알림에는 운영 메타데이터를 넣지 않는다.
     return _build_summary(
         "✅ RiskRadar 업데이트 완료", matrix, synced,
         axes=axes, readings=readings, aux_df=aux_df, credit_episode=credit_episode,
+        rate_composition=rate_composition,
     )
 
 
@@ -321,7 +356,8 @@ def build_partial(cache_version: str, matrix: pd.DataFrame, synced: dict,
                   failed: list[str], stale: list[str], *, axes: dict | None = None,
                   readings: list[dict] | None = None,
                   aux_df: pd.DataFrame | None = None,
-                  credit_episode: dict | None = None) -> str:
+                  credit_episode: dict | None = None,
+                  rate_composition: dict | None = None) -> str:
     del cache_version
     notice = ["⚠️ 일부 핵심 데이터는 직전 정상값을 사용했습니다."]
     if failed:
@@ -331,7 +367,8 @@ def build_partial(cache_version: str, matrix: pd.DataFrame, synced: dict,
     return _build_summary(
         "⚠️ RiskRadar 부분 업데이트", matrix, synced,
         axes=axes, readings=readings, aux_df=aux_df,
-        credit_episode=credit_episode, notice_lines=notice,
+        credit_episode=credit_episode, rate_composition=rate_composition,
+        notice_lines=notice,
     )
 
 
