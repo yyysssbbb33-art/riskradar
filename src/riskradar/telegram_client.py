@@ -36,8 +36,8 @@ _DIRECTION_TEXT = {
     "확인 불가": "확인 불가",
 }
 _AUX_SHORT_NAMES = {
-    "BREAKEVEN": "10Y Breakeven",
-    "TERMPREM": "10Y Term Premium",
+    "BREAKEVEN": "10년 일반·물가연동 국채금리 차이",
+    "TERMPREM": "10년 장기채 추가 보상",
     "BBBOAS": "BBB OAS",
     "AOAS": "A OAS",
     "CPSPREAD": "CP Spread",
@@ -130,33 +130,39 @@ def _lens_result_lines(credit_episode: dict | None) -> list[str]:
 
 
 def _rate_composition_lines(rate_composition: dict | None) -> list[str]:
+    from .rate_composition import describe_rate_change, describe_total_sentence
+
     summary = rate_composition or {}
-    lines = ["", "30년 금리 구성 (같은 만기 · 약 1개월)"]
+    lines = ["", "30년 미국 국채금리 · 최근 약 1개월"]
     if summary.get("status") != "ok":
-        return lines + ["• 30년 실질금리 구성 자료 확인 불가"]
+        return lines + ["• 금리 변화를 나눠 볼 자료 확인 불가"]
 
     primary = summary.get("primary") or {}
-    nominal = primary.get("DGS30_change_bp")
+    total = primary.get("DGS30_change_bp")
     real = primary.get("DFII30_change_bp")
-    proxy = primary.get("INFLCOMP30_change_bp")
+    gap = primary.get("INFLCOMP30_change_bp")
 
-    def bp(value):
-        return "확인 불가" if value is None else f"{float(value):+.1f}bp"
-
-    lines.append(f"• 30Y 명목 {bp(nominal)} = 30Y 실질 {bp(real)} + 명목−실질 금리차 {bp(proxy)}")
+    lines += [
+        f"• 전체 금리: {describe_rate_change(total)}",
+        f"• 물가 영향을 뺀 금리: {describe_rate_change(real)}",
+        f"• 일반 국채와 물가연동국채의 금리 차이: {describe_rate_change(gap, gap=True)}",
+        f"→ {describe_total_sentence(total)} 위 두 변화가 합쳐진 결과입니다.",
+    ]
     curve = summary.get("curve") or {}
     if curve.get("text"):
-        lines.append(f"• 곡선: {curve['text']}")
-    lines.append("• 명목−실질 금리차는 물가보상 proxy이며 순수 기대인플레이션으로 보지 않음")
+        lines.append(f"• 금리 곡선: {curve['text']}")
+    lines.append("• 참고: 이 금리 차이에는 물가 기대뿐 아니라 물가 위험과 채권 수요·공급 영향도 섞일 수 있습니다.")
 
     tp = summary.get("term_premium") or {}
     if tp.get("status") == "ok":
-        lines.append(
-            f"• 10Y Term Premium 별도 맥락: 약 1개월 {bp(tp.get('change_1m_bp'))} · "
-            f"{_DIRECTION_TEXT.get(str(tp.get('direction', '판정불가')), '확인 불가')}"
-        )
+        change = describe_rate_change(tp.get("change_1m_bp"))
+        if change == "거의 변화 없음":
+            lines.append("• 참고: 10년 국채를 오래 보유할 때 시장이 요구하는 추가 보상(모형 추정)은 최근 약 1개월 거의 변하지 않았습니다.")
+        else:
+            change_sentence = change.replace(" 상승", " 높아졌습니다.").replace(" 하락", " 낮아졌습니다.")
+            lines.append(f"• 참고: 10년 국채를 오래 보유할 때 시장이 요구하는 추가 보상(모형 추정)은 최근 약 1개월 {change_sentence}")
     else:
-        lines.append("• 10Y Term Premium 별도 맥락: 확인 불가")
+        lines.append("• 참고: 10년 국채 장기 보유에 대한 추가 보상은 현재 확인할 수 없습니다.")
     return lines
 
 

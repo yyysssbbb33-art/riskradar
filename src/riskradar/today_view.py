@@ -52,7 +52,7 @@ def _fmt_change(row) -> str:
 
 
 _AUX_GROUPS = [
-    ("10년 구간 참고 맥락", ("BREAKEVEN", "TERMPREM")),
+    ("10년 구간 참고 자료", ("BREAKEVEN", "TERMPREM")),
     ("기업 신용 부담이 어디에서 나타나나", ("BBBOAS", "AOAS")),
     ("단기 자금시장도 영향을 받고 있나", ("CPSPREAD",)),
     ("외부 참고 지표", ("NFCI", "STLFSI")),
@@ -121,7 +121,7 @@ def _aux_section(aux_df: pd.DataFrame) -> str:
 
     lines = [
         "### 함께 보는 참고 지표",
-        "함께 볼 지표는 10년 금리 구간의 별도 맥락, 회사채 부담이 나타나는 곳, 단기 자금시장 변화를 구분할 때 씁니다. 외부 참고 지표는 공식 종합 지표가 같은 방향인지 마지막에 확인합니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
+        "함께 볼 지표는 10년 금리 구간의 참고 신호, 회사채 부담이 나타나는 곳, 단기 자금시장 변화를 구분할 때 씁니다. 외부 참고 지표는 공식 종합 지표가 같은 방향인지 마지막에 확인합니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
         "",
     ]
     old_name_to_key = {
@@ -184,7 +184,7 @@ def _credit_episode_section(dq: dict) -> str:
             continue
         extra = []
         if row.get("confirmed_at"):
-            extra.append(f"상승 변화 확인 {row.get('confirmed_at')}")
+            extra.append(f"부담 상승 확인 {row.get('confirmed_at')}")
         if row.get("residual_change") is not None:
             extra.append(f"기준선 대비 {row.get('residual_change') / 100.0:+.2f}%p 남음")
         suffix = " · " + " · ".join(extra) if extra else ""

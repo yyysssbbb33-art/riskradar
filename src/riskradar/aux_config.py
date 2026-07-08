@@ -2,7 +2,7 @@
 
 v0.7.1의 3층 구조
 - 핵심 신호: 기존 핵심 6개 + 기업 신용 블록의 HY-BBB 해석 기준
-- 확인 지표: 10년 금리 참고 맥락(BREAKEVEN/TERMPREM), 신용 범위(BBB/A), 단기자금(CP)
+- 확인 지표: 10년 금리 참고 자료(BREAKEVEN/TERMPREM), 신용 범위(BBB/A), 단기자금(CP)
 - 외부 참고: NFCI/STLFSI
 
 broad IG(IGOAS)는 과거 캐시와 운영 진단을 위해 수집은 유지하지만 범위 엔진·UI 상세 목록에서는 제외한다.
@@ -37,13 +37,13 @@ class AuxSeries:
 
 AUX_SERIES: dict[str, AuxSeries] = {
     "BREAKEVEN": AuxSeries(
-        "T10YIE", "BREAKEVEN", "10년 명목−실질 금리차",
-        "30년 구성의 직접 요소가 아니라 10년 구간의 물가보상 움직임을 교차 만기로 참고",
+        "T10YIE", "BREAKEVEN", "10년 일반·물가연동 국채금리 차이",
+        "10년 일반 국채와 물가연동 국채의 금리 차이가 어떻게 움직이는지 참고",
         "fred", 1.0, "%", 100.0, "bp", category="rate_context",
     ),
     "TERMPREM": AuxSeries(
-        "THREEFYTP10", "TERMPREM", "장기채 추가 보상",
-        "30년 구성에 더하지 않고 10년 장기채 보상 움직임을 별도 맥락으로 참고",
+        "THREEFYTP10", "TERMPREM", "10년 장기채 추가 보상",
+        "10년 국채를 오래 보유할 때 시장이 요구하는 추가 보상 추정치가 어떻게 움직이는지 참고",
         "fred", 1.0, "%", 100.0, "bp", category="rate_context",
     ),
     "BBBOAS": AuxSeries(
@@ -103,7 +103,7 @@ AUX_CHANGE_CENTER_KEYS = frozenset({
     "NFCI",
     "STLFSI",
 })
-# Telegram은 30년 동일 만기 구성과 10년 Term Premium을 별도 블록에서 보여준다.
+# Telegram은 30년 금리 변화와 10년 장기채 추가 보상을 따로 보여준다.
 TELEGRAM_CONFIRM_AUX_ORDER = ["BREAKEVEN", "BBBOAS", "AOAS", "CPSPREAD"]
 LEGACY_AUX_ORDER = ["IGOAS"]
 AUX_ORDER = VISIBLE_AUX_ORDER + LEGACY_AUX_ORDER

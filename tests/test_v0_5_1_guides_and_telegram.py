@@ -152,11 +152,13 @@ def test_telegram_shows_all_results_then_interpretation():
     assert "HY OAS: 3.45%p · +0.12%p / +0.28%p" in text
     assert "30Y: 4.72% · +0.24%p / +0.41%p" in text
 
-    # 30년 동일 만기 구성은 별도 블록이다. 10년 breakeven은 교차 만기 참고로 유지하고,
-    # 10년 Term Premium은 전용 별도 맥락 줄에서 보여 중복하지 않는다.
-    assert "30Y 명목 +24.0bp = 30Y 실질 +15.0bp + 명목−실질 금리차 +9.0bp" in text
-    assert "10Y Breakeven: 2.36% · +0.07%p" in text
-    assert text.count("10Y Term Premium 별도 맥락") == 1
+    # 30년 금리 변화는 수식 대신 쉬운 문장으로 보여준다.
+    assert "30년 미국 국채금리 · 최근 약 1개월" in text
+    assert "전체 금리: 0.24%p 상승" in text
+    assert "물가 영향을 뺀 금리: 0.15%p 상승" in text
+    assert "일반 국채와 물가연동국채의 금리 차이: 0.09%p 확대" in text
+    assert "10년 일반·물가연동 국채금리 차이" in text
+    assert text.count("10년 국채를 오래 보유할 때 시장이 요구하는 추가 보상(모형 추정)") == 1
     assert "BBB OAS: 1.32%p · +0.14%p" in text
     assert "A OAS: 0.84%p · +0.03%p" in text
     assert "CP Spread: 0.46%p · +0.11%p" in text

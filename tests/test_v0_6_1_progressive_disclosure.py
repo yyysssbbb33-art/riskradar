@@ -49,26 +49,25 @@ def test_today_summary_keeps_only_core_sections_and_points_to_full_detail():
     assert "결과가 달라지면" not in summary
 
 
-def test_non_guide_tabs_use_closed_accordions_for_help_and_reference_content():
+def test_non_guide_tabs_keep_reference_content_behind_short_closed_accordions():
     source = Path(__file__).parents[1] / "src" / "riskradar" / "ui.py"
     text = source.read_text(encoding="utf-8")
 
     expected = [
-        'with gr.Accordion("현재 상황 읽는 법", open=False)',
-        'with gr.Accordion("용어·표현 참고하기", open=False)',
-        'with gr.Accordion("전체 근거·함께 볼 지표·다른 경우의 해석 보기", open=False)',
-        'with gr.Accordion("지난 30일 흐름 읽는 법", open=False)',
-        'with gr.Accordion("데이터 구성 방식·주의사항 보기", open=False)',
+        'with gr.Accordion("관리·진단", open=False)',
+        'with gr.Accordion("왜 이렇게 봤나", open=False)',
+        'with gr.Accordion("30년 금리 자세히", open=False)',
+        'with gr.Accordion("지난 30일 읽는 법", open=False)',
+        'with gr.Accordion("데이터 설명·주의사항", open=False)',
         'with gr.Accordion("같은 날짜 비교 읽는 법", open=False)',
-        'with gr.Accordion("전체 지표 비교 읽는 법", open=False)',
+        'with gr.Accordion("표 읽는 법", open=False)',
         'with gr.Accordion("차트 읽는 법", open=False)',
-        'with gr.Accordion("함께 볼 지표 수집 상세 보기", open=False)',
+        'with gr.Accordion("함께 볼 지표 수집 상태", open=False)',
     ]
     for phrase in expected:
         assert phrase in text
 
-    # 지표 설명 탭은 상세 정보 자체가 목적이라 별도 전체 접기 구조를 강제하지 않는다.
-    guide_start = text.index('with gr.Tab("지표 설명")')
+    guide_start = text.index('with gr.Tab("설명")')
     assert 'gr.Markdown(GUIDE_INTRO)' in text[guide_start:]
 
 

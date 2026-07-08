@@ -38,15 +38,17 @@ def _chart() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def test_core_cards_default_change_filter_hides_quiet_items_but_all_view_keeps_them():
+def test_core_cards_keep_all_six_available_but_compact_change_view_still_works():
     changed = render_core_cards_html(_matrix(), _chart(), changes_only=True)
     all_cards = render_core_cards_html(_matrix(), _chart(), changes_only=False)
 
-    assert "신용등급이 낮은 기업의 추가 금리(HY OAS)" in changed
-    assert "주식시장 예상 변동성(VIX)" not in changed
+    assert "HY OAS" in changed
+    assert "VIX" not in changed
     assert "나머지 1개 핵심 지표" in changed
-    assert "주식시장 예상 변동성(VIX)" in all_cards
-    assert "약 1개월" in all_cards and "약 3개월" in all_cards
+    assert "VIX" in all_cards and "HY OAS" in all_cards
+    assert "약 1개월" in all_cards
+    assert "약 3개월" not in all_cards
+    assert "rr-core-grid" in all_cards
 
 
 def test_recent_change_renderer_uses_user_names_and_keeps_data_issues_separate():
@@ -86,7 +88,8 @@ def test_credit_range_map_is_participation_map_not_sequence_arrow():
     }
     html = render_credit_range_map_html(dq)
     assert "HY" in html and "BBB" in html and "A" in html and "CP" in html
-    assert html.count("변화 나타남") == 2
+    assert "rr-credit-grid-2x2" in html
+    assert html.count("rr-credit-tile-hot") == 2
     assert "→" not in html
     assert "HY−BBB" in html
 
@@ -117,14 +120,16 @@ def test_evidence_balance_limits_visible_tally_and_keeps_uncertainty():
     assert "점수처럼 세지 않습니다" in text
 
 
-def test_v070_has_five_top_tabs_and_embeds_data_status_above_tabs():
+def test_v074_has_five_short_tabs_and_scan_first_structure():
     source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
-    for name in ("한눈에 보기", "기업 신용", "흐름과 차트", "비교", "지표 설명"):
+    for name in ("오늘", "신용", "흐름", "비교", "설명"):
         assert f'with gr.Tab("{name}")' in source
-    for old in ("현재 상황", "오늘의 해석", "지난 30일 흐름", "같은 날짜 비교", "전체 지표 비교", "차트", "데이터 상태"):
+    for old in ("한눈에 보기", "기업 신용", "흐름과 차트", "지표 설명"):
         assert f'with gr.Tab("{old}")' not in source
-    assert 'with gr.Accordion("데이터 상태·운영 진단 보기", open=False)' in source
-    assert 'gr.Checkbox(value=True, label="변화 있는 항목만 보기")' in source
+    assert 'with gr.Accordion("관리·진단", open=False)' in source
+    assert 'gr.Checkbox(value=True, label="변화 있는 항목만 보기")' not in source
+    assert 'domain_strip_component = gr.HTML(initial["domain_strip"])' in source
+    assert 'core_cards_component = gr.HTML(initial["core_cards_all"])' in source
 
 
 def test_v070_accepts_v062_data_as_its_required_ui_baseline():

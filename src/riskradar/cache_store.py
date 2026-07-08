@@ -16,10 +16,12 @@ import json
 import logging
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
+
+from . import decision_ledger as DL
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ OPTIONAL_JSON_ARTIFACTS = ["decision_snapshot", "decision_diff", "rate_compositi
 KEEP_LAST_N = int(os.environ.get("CACHE_KEEP_LAST_N", "45"))
 KEEP_MIN_DAYS = int(os.environ.get("CACHE_KEEP_MIN_DAYS", "90"))
 KEEP_MAX_N = int(os.environ.get("CACHE_KEEP_MAX_N", "180"))
+
+DECISION_LEDGER_PATH = "audit/decision_ledger.parquet"
+DECISION_LEDGER_STATUS_PATH = "audit/decision_ledger_status.json"
 
 
 # ---------------------------------------------------------------- common ----
@@ -65,7 +70,36 @@ def _safe_version_sort(cache_version: str):
 
 
 
+def _decision_ledger_status(
+    ledger: pd.DataFrame,
+    *,
+    versions_scanned: int,
+    versions_added: list[str],
+    rows_added: int,
+) -> dict:
+    versions = sorted(DL.ledger_versions(ledger), key=_safe_version_sort)
+    return {
+        "schema_version": DL.LEDGER_SCHEMA_VERSION,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "versions_scanned": int(versions_scanned),
+        "authoritative_versions_total": int(len(versions)),
+        "versions_added": list(versions_added),
+        "rows_added": int(rows_added),
+        "total_rows": int(len(ledger)),
+        "latest_cache_version": versions[-1] if versions else None,
+        "source_policy": "stored_authoritative_decision_snapshots_only",
+        "raw_recomputation": False,
+        "pre_v0_6_2_backfill": False,
+    }
 
+
+def _ledger_sync_failed(error: Exception) -> dict:
+    return {
+        "status": "failed",
+        "schema_version": DL.LEDGER_SCHEMA_VERSION,
+        "error": f"{type(error).__name__}: {error}",
+        "prune_skipped": True,
+    }
 
 
 def _versions_to_prune(versions: list[str]) -> list[str]:
@@ -157,7 +191,7 @@ class LocalStore:
         self.root = Path(root)
         (self.root / "versions").mkdir(parents=True, exist_ok=True)
 
-    def publish(self, cache_version: str, artifacts: dict, status: dict) -> None:
+    def publish(self, cache_version: str, artifacts: dict, status: dict) -> dict:
         vdir = self.root / "versions" / cache_version
         vdir.mkdir(parents=True, exist_ok=True)
         for name in ARTIFACT_PARQUETS:
@@ -177,7 +211,13 @@ class LocalStore:
         # 포인터 마지막
         (self.root / "data_status.json").write_text(
             json.dumps(status, ensure_ascii=False, indent=2))
+        try:
+            ledger_status = self.sync_decision_ledger(current_cache_version=cache_version)
+        except Exception as e:  # noqa: BLE001 - 원장 실패는 활성 데이터 성공을 되돌리지 않음
+            log.warning("decision ledger sync failed; skip prune: %s", e)
+            return _ledger_sync_failed(e)
         self._prune()
+        return {"status": "ok", **ledger_status, "prune_skipped": False}
 
     def update_status(self, cache_version: str, status: dict) -> None:
         """산출물은 건드리지 않고 status와 활성 포인터만 데이터 업데이트한다."""
@@ -287,6 +327,59 @@ class LocalStore:
                 return hit.sort_values("date").reset_index(drop=True)
         return None
 
+    def load_decision_ledger(self) -> pd.DataFrame:
+        fp = self.root / DECISION_LEDGER_PATH
+        return pd.read_parquet(fp) if fp.exists() else DL.empty_ledger()
+
+    def load_decision_ledger_status(self) -> dict:
+        fp = self.root / DECISION_LEDGER_STATUS_PATH
+        return json.loads(fp.read_text()) if fp.exists() else {}
+
+    def sync_decision_ledger(self, current_cache_version: str | None = None) -> dict:
+        """보존 중인 권위 snapshot만 영구 원장에 보충한다. raw 재계산은 하지 않는다."""
+        existing = self.load_decision_ledger()
+        known_versions = DL.ledger_versions(existing)
+        versions = self.list_versions()
+        frames: list[pd.DataFrame] = []
+        added_versions: list[str] = []
+
+        for version in versions:
+            if version in known_versions and version != current_cache_version:
+                continue
+            fp = self.root / "versions" / version / "decision_snapshot.json"
+            if not fp.exists():
+                continue
+            snapshot = json.loads(fp.read_text())
+            rows = DL.snapshot_to_ledger_rows(snapshot)
+            if rows.empty:
+                continue
+            frames.append(rows)
+            if version not in known_versions:
+                added_versions.append(version)
+
+        incoming = pd.concat(frames, ignore_index=True) if frames else DL.empty_ledger()
+        merged = DL.merge_ledgers(existing, incoming)
+        rows_added = len(merged) - len(existing)
+        status = _decision_ledger_status(
+            merged,
+            versions_scanned=len(versions),
+            versions_added=added_versions,
+            rows_added=rows_added,
+        )
+
+        audit_dir = self.root / "audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        ledger_fp = self.root / DECISION_LEDGER_PATH
+        if rows_added > 0 or not ledger_fp.exists():
+            tmp = ledger_fp.with_suffix(".parquet.tmp")
+            merged.to_parquet(tmp, index=False)
+            tmp.replace(ledger_fp)
+        status_fp = self.root / DECISION_LEDGER_STATUS_PATH
+        status_tmp = status_fp.with_suffix(".json.tmp")
+        status_tmp.write_text(json.dumps(status, ensure_ascii=False, indent=2))
+        status_tmp.replace(status_fp)
+        return status
+
     def _prune(self):
         versions = self.list_versions()
         for old in _versions_to_prune(versions):
@@ -304,7 +397,7 @@ class HfDatasetStore:
         self.api = HfApi(token=token)
         self.token = token
 
-    def publish(self, cache_version: str, artifacts: dict, status: dict) -> None:
+    def publish(self, cache_version: str, artifacts: dict, status: dict) -> dict:
         from huggingface_hub import CommitOperationAdd
         ops = []
         for name in ARTIFACT_PARQUETS:
@@ -337,7 +430,13 @@ class HfDatasetStore:
             path_or_fileobj=json.dumps(status, ensure_ascii=False, indent=2).encode(),
             path_in_repo="data_status.json", repo_id=self.repo_id,
             repo_type="dataset", commit_message=f"activate {cache_version}")
+        try:
+            ledger_status = self.sync_decision_ledger(current_cache_version=cache_version)
+        except Exception as e:  # noqa: BLE001 - 원장 실패는 활성 데이터 성공을 되돌리지 않음
+            log.warning("decision ledger sync failed; skip prune: %s", e)
+            return _ledger_sync_failed(e)
         self._prune()
+        return {"status": "ok", **ledger_status, "prune_skipped": False}
 
     def update_status(self, cache_version: str, status: dict) -> None:
         """Telegram 결과처럼 작은 상태 변화만 데이터 업데이트한다. parquet은 재업로드하지 않는다."""
@@ -502,6 +601,92 @@ class HfDatasetStore:
             if not hit.empty:
                 return hit.sort_values("date").reset_index(drop=True)
         return None
+
+    def load_decision_ledger(self) -> pd.DataFrame:
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.utils import EntryNotFoundError
+        try:
+            fp = hf_hub_download(
+                self.repo_id, DECISION_LEDGER_PATH, repo_type="dataset", token=self.token
+            )
+        except EntryNotFoundError:
+            return DL.empty_ledger()
+        return pd.read_parquet(fp)
+
+    def load_decision_ledger_status(self) -> dict:
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.utils import EntryNotFoundError
+        try:
+            fp = hf_hub_download(
+                self.repo_id, DECISION_LEDGER_STATUS_PATH, repo_type="dataset", token=self.token
+            )
+        except EntryNotFoundError:
+            return {}
+        return json.loads(Path(fp).read_text())
+
+    def sync_decision_ledger(self, current_cache_version: str | None = None) -> dict:
+        """Dataset에 남아 있는 권위 snapshot만 audit 원장에 보충한다."""
+        from huggingface_hub import CommitOperationAdd, hf_hub_download
+
+        files = self.api.list_repo_files(self.repo_id, repo_type="dataset")
+        versions = _versions_from_paths(files)
+        snapshot_versions = sorted({
+            p.split("/")[1]
+            for p in files
+            if p.startswith("versions/")
+            and p.endswith("/decision_snapshot.json")
+            and len(p.split("/")) >= 3
+        }, key=_safe_version_sort)
+        existing = self.load_decision_ledger()
+        known_versions = DL.ledger_versions(existing)
+        frames: list[pd.DataFrame] = []
+        added_versions: list[str] = []
+
+        for version in snapshot_versions:
+            if version in known_versions and version != current_cache_version:
+                continue
+            fp = hf_hub_download(
+                self.repo_id,
+                f"versions/{version}/decision_snapshot.json",
+                repo_type="dataset",
+                token=self.token,
+            )
+            snapshot = json.loads(Path(fp).read_text())
+            rows = DL.snapshot_to_ledger_rows(snapshot)
+            if rows.empty:
+                continue
+            frames.append(rows)
+            if version not in known_versions:
+                added_versions.append(version)
+
+        incoming = pd.concat(frames, ignore_index=True) if frames else DL.empty_ledger()
+        merged = DL.merge_ledgers(existing, incoming)
+        rows_added = len(merged) - len(existing)
+        status = _decision_ledger_status(
+            merged,
+            versions_scanned=len(versions),
+            versions_added=added_versions,
+            rows_added=rows_added,
+        )
+
+        ledger_exists = DECISION_LEDGER_PATH in files
+        if rows_added > 0 or not ledger_exists:
+            buf = io.BytesIO()
+            merged.to_parquet(buf, index=False)
+            ops = [
+                CommitOperationAdd(DECISION_LEDGER_PATH, buf.getvalue()),
+                CommitOperationAdd(
+                    DECISION_LEDGER_STATUS_PATH,
+                    json.dumps(status, ensure_ascii=False, indent=2).encode(),
+                ),
+            ]
+            self.api.create_commit(
+                self.repo_id,
+                repo_type="dataset",
+                operations=ops,
+                commit_message=f"decision ledger {status.get('latest_cache_version') or 'init'}",
+            )
+        return status
 
     def _prune(self):
         try:

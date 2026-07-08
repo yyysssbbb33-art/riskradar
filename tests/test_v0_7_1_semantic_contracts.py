@@ -55,11 +55,11 @@ def test_ui_and_telegram_share_same_rate_summary_values():
     summary = _summary()
     ui = render_markdown(summary)
     tg = "\n".join(TG._rate_composition_lines(summary))
-    for token in ("+21.0bp", "+13.0bp", "+8.0bp"):
+    for token in ("0.21%p", "0.13%p", "0.08%p"):
         assert token in ui
         assert token in tg
-    assert "30년 명목−실질 금리차는 **물가보상 proxy**" in ui
-    assert "순수 기대인플레이션으로 보지 않음" in tg
+    assert "물가 기대뿐 아니라 물가 위험과 채권 수요·공급 영향도" in ui
+    assert "물가 기대뿐 아니라 물가 위험과 채권 수요·공급 영향도" in tg
 
 
 def test_rate_composition_copy_does_not_add_causal_gloss():

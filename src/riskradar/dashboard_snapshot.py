@@ -68,7 +68,7 @@ def load_dashboard_snapshot(store, days: int = 30) -> DashboardSnapshot:
     aux_raw = _optional("aux_raw", "함께 볼 지표 원자료")
     credit_node_history = _optional("credit_episode_nodes", "신용 변화 흐름 노드 기록")
     credit_episodes = _optional("credit_episodes", "신용 변화 흐름 기록")
-    rate_composition_series = _optional("rate_composition_series", "30년 동일 만기 구성 시계열")
+    rate_composition_series = _optional("rate_composition_series", "30년 금리 변화 시계열")
 
     def _optional_json(name: str, label: str) -> dict:
         loader = getattr(store, "load_json_artifact", None)

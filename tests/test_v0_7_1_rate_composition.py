@@ -74,7 +74,7 @@ def test_markdown_separates_term_premium_from_30y_arithmetic():
     }])
     summary = RC.build_summary(RC.build_composition_series(nominal, real), nominal, _raw([3.5] * n), aux)
     text = RC.render_markdown(summary)
-    assert "같은 **30년 만기**" in text
-    assert "물가보상 proxy" in text
-    assert "10년 Term Premium은 별도 맥락" in text
-    assert "산술 구성에 더하는 항목이 아닙니다" in text
+    assert "둘 다 **30년짜리 금리**" in text
+    assert "물가 기대뿐 아니라 물가 위험과 채권 수요·공급 영향도" in text
+    assert "참고: 10년 국채를 오래 보유할 때 요구되는 추가 보상" in text
+    assert "더하는 값은 아닙니다" in text

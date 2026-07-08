@@ -118,7 +118,7 @@ def test_early_change_is_not_coequal_event_but_confirmed_event_keeps_candidate_d
     assert confirmed["candidate_start"] == "2026-03-01"
 
     text = render_credit_timeline_markdown(out)
-    assert "확정 전 후보 신호는 2026-03-01부터 이어졌습니다" in text
+    assert "확인되기 전부터 2026-03-01에 초기 변화가 보이기 시작했습니다" in text
     assert "당시 상태" in text
     assert "현재 표시는" not in text
 
@@ -129,7 +129,7 @@ def test_confirmed_lifecycle_events_are_kept_without_sequence_claims():
     assert {"confirmed", "state_change", "new_peak", "retracing", "normalized"}.issubset(kinds)
 
     text = render_credit_timeline_markdown(out)
-    assert "실제 선후행·인과 관계·다음 움직임을 주장하지 않습니다" in text
+    assert "어느 시장이 먼저 움직였는지에 의미를 붙이거나 다음 움직임을 예측하지 않습니다" in text
     assert "선행지표" not in text
     assert "다음은" not in text
 
@@ -145,17 +145,17 @@ def test_past_episode_uses_same_end_date_for_title_and_duration_and_excludes_ope
 
     text = render_past_credit_episodes_markdown(out)
     assert "### 2026-01-01 ~ 2026-01-20" in text
-    assert "관찰된 기간:** 20일" in text
+    assert "기록된 기간:** 20일" in text
     assert "credit-3" not in text
 
 
 def test_past_episode_copy_is_reconstruction_not_accumulation_and_warns_about_revision():
     out = build_credit_timeline(_history(), _episodes())
     text = render_past_credit_episodes_markdown(out, max_episodes=1)
-    assert "과거 에피소드 2개 중 최근 1개" in text
-    assert "현재 공식 자료 범위에서 재구성한 기록" in text
-    assert "원자료 개정이나 이용 가능한 자료 범위 변화" in text
-    assert "과거 날짜와 변화가 기록된 시장이 조정될 수 있습니다" in text
+    assert "지난 변화 기록 2개 중 최근 1개" in text
+    assert "현재 제공되는 공식 자료로 다시 계산한 기록" in text
+    assert "공식 원자료가 수정되거나 제공 기간이 달라지면" in text
+    assert "과거 날짜와 포함된 시장도 바뀔 수 있습니다" in text
     assert "누적" not in text
 
 
@@ -186,7 +186,7 @@ def test_existing_credit_detail_no_longer_exposes_estimated_onset_as_change_star
     }
     text = render_credit_episode_markdown(dq)
     assert "변화 시작 2026-03-01" not in text
-    assert "상승 변화 확인 2026-03-03" in text
+    assert "부담 상승 확인 2026-03-03" in text
 
 
 def test_known_mechanical_replacement_artifacts_are_removed_from_source():
@@ -217,9 +217,9 @@ def test_v072_ui_accepts_v071_and_v070_data_and_places_timeline_in_credit_tab():
     assert _is_compatible_data_code_version("0.6.2", "0.7.2") is False
 
     source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
-    assert 'credit_timeline_component = gr.Markdown(initial["credit_timeline"])' in source
-    assert 'with gr.Accordion("과거 에피소드 보기", open=False)' in source
-    assert source.index('with gr.Tab("기업 신용")') < source.index('credit_timeline_component = gr.Markdown(initial["credit_timeline"])')
+    assert 'credit_timeline_component = gr.HTML(initial["credit_timeline_html"])' in source
+    assert 'with gr.Accordion("지난 변화 기록", open=False)' in source
+    assert source.index('with gr.Tab("신용")') < source.index('credit_timeline_component = gr.HTML(initial["credit_timeline_html"])')
 
 
 def test_timeline_reads_actual_credit_engine_output_without_new_judgment():

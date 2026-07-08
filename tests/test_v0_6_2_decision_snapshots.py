@@ -226,7 +226,7 @@ def test_v062_ui_accepts_v060_and_v061_data_and_has_decision_diagnostic_accordio
     assert _is_compatible_data_code_version("0.4.9", "0.6.2") is False
 
     source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
-    assert 'with gr.Accordion("판정 기록·변화 진단 보기", open=False)' in source
+    assert 'with gr.Accordion("판정 기록·변화 진단", open=False)' in source
 
 
 def test_old_cache_without_decision_json_loads_gracefully(monkeypatch, tmp_path):

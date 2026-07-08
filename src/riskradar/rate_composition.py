@@ -4,7 +4,7 @@
 - DFII30은 core/aux 판정에 넣지 않는 전용 입력이다.
 - DGS30과 DFII30의 공통 관측일에서 30년 명목-실질 금리차를 한 번만 계산한다.
 - 곡선 설명은 DGS30과 DGS2를 같은 관측창으로 비교한다.
-- 10년 Term Premium은 30년 산술 구성에 더하지 않는 별도 맥락이다.
+- 10년 장기채 추가 보상은 30년 금리 변화 계산과 분리해 참고 정보로만 보여준다.
 """
 from __future__ import annotations
 
@@ -229,14 +229,14 @@ def build_summary(series: pd.DataFrame,
         "term_premium": _term_premium_context(aux_df),
     }
     if series is None or series.empty:
-        base["reason"] = "DFII30 또는 같은 날짜의 30년 명목금리 자료를 확인할 수 없습니다."
+        base["reason"] = "물가 영향을 뺀 30년 금리 또는 같은 날짜의 30년 미국 국채금리 자료를 확인할 수 없습니다."
         base["curve"] = _curve_summary(dgs30_raw, dgs2_raw)
         return base
 
     primary = _changes_from_series(series, C.RATE_COMPOSITION_LOOKBACK_OBS)
     context = _changes_from_series(series, C.RATE_COMPOSITION_CONTEXT_LOOKBACK_OBS)
     if primary is None:
-        base["reason"] = "약 1개월 동일 만기 변화를 계산할 공통 관측치가 부족합니다."
+        base["reason"] = "최근 약 1개월 변화를 나눠 볼 공통 관측치가 부족합니다."
         base["curve"] = _curve_summary(dgs30_raw, dgs2_raw)
         return base
 
@@ -256,54 +256,196 @@ def build_summary(series: pd.DataFrame,
     return base
 
 
-def _fmt_bp(value: Any) -> str:
+def _fmt_change(value: Any) -> str:
+    """내부 bp 변화를 사용자 화면의 %p로 보여준다."""
     if value is None:
         return "확인 불가"
     try:
-        return f"{float(value):+.1f}bp"
+        return f"{float(value) / 100.0:+.2f}%p"
     except (TypeError, ValueError):
         return "확인 불가"
 
 
+def describe_rate_change(value: Any, *, gap: bool = False) -> str:
+    """금리 변화량을 수식이 아니라 읽기 쉬운 말로 바꾼다."""
+    if value is None:
+        return "확인 불가"
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "확인 불가"
+    amount = f"{abs(x) / 100.0:.2f}%p"
+    if abs(x) < 0.05:
+        return "거의 변화 없음"
+    if gap:
+        return f"{amount} 확대" if x > 0 else f"{amount} 축소"
+    return f"{amount} 상승" if x > 0 else f"{amount} 하락"
+
+
+def describe_total_sentence(value: Any) -> str:
+    if value is None:
+        return "전체 금리 변화는 확인할 수 없습니다."
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "전체 금리 변화는 확인할 수 없습니다."
+    amount = f"{abs(x) / 100.0:.2f}%p"
+    if abs(x) < 0.05:
+        return "전체 금리는 거의 변하지 않았습니다."
+    return f"전체 금리는 {amount} 올랐습니다." if x > 0 else f"전체 금리는 {amount} 내렸습니다."
+
+
 def render_markdown(summary: dict | None) -> str:
-    """첫 화면용 장기금리 구성 패널."""
+    """첫 화면용 30년 미국 국채금리 변화 설명."""
     s = summary or {}
-    lines = ["## 장기금리 변화의 구성"]
+    lines = ["## 30년 미국 국채금리 변화 나눠보기"]
     if s.get("status") != "ok":
-        lines.append(s.get("reason") or "30년 동일 만기 구성 자료를 현재 확인할 수 없습니다.")
-        lines.append("새 v0.7.1 배치가 정상 완료되면 30년 명목금리와 30년 실질금리를 같은 날짜로 맞춰 보여줍니다.")
+        lines.append(s.get("reason") or "30년 미국 국채금리 변화를 나눠 볼 자료를 현재 확인할 수 없습니다.")
+        lines.append("새 데이터 업데이트가 정상 완료되면 30년 미국 국채금리와 물가 영향을 뺀 30년 금리를 같은 날짜로 맞춰 보여줍니다.")
         return "\n\n".join(lines)
 
     primary = s.get("primary") or {}
     context = s.get("context") or {}
     lines += [
-        "같은 **30년 만기**끼리 맞춰, 명목금리 변화가 실질금리와 명목−실질 금리차에서 각각 얼마나 나타났는지 봅니다.",
+        "최근 약 1개월과 3개월 동안 30년 미국 국채금리가 얼마나 움직였는지 두 부분으로 나눠 봅니다. 둘 다 **30년짜리 금리**를 사용합니다.",
         "",
-        "| 구성 | 약 1개월 | 약 3개월 |",
+        "| 무엇이 움직였나 | 약 1개월 | 약 3개월 |",
         "|---|---:|---:|",
-        f"| 30년 명목금리 | {_fmt_bp(primary.get('DGS30_change_bp'))} | {_fmt_bp(context.get('DGS30_change_bp'))} |",
-        f"| 30년 실질금리 | {_fmt_bp(primary.get('DFII30_change_bp'))} | {_fmt_bp(context.get('DFII30_change_bp'))} |",
-        f"| 30년 명목−실질 금리차 | {_fmt_bp(primary.get('INFLCOMP30_change_bp'))} | {_fmt_bp(context.get('INFLCOMP30_change_bp'))} |",
+        f"| 전체 30년 국채금리 | {_fmt_change(primary.get('DGS30_change_bp'))} | {_fmt_change(context.get('DGS30_change_bp'))} |",
+        f"| 물가 영향을 뺀 30년 금리 | {_fmt_change(primary.get('DFII30_change_bp'))} | {_fmt_change(context.get('DFII30_change_bp'))} |",
+        f"| 일반 국채와 물가연동국채의 금리 차이 | {_fmt_change(primary.get('INFLCOMP30_change_bp'))} | {_fmt_change(context.get('INFLCOMP30_change_bp'))} |",
         "",
-        f"**같은 만기 확인:** {_fmt_bp(primary.get('DGS30_change_bp'))} = "
-        f"{_fmt_bp(primary.get('DFII30_change_bp'))} + {_fmt_bp(primary.get('INFLCOMP30_change_bp'))}",
+        "### 최근 약 1개월을 쉽게 읽으면",
+        f"- **전체 금리:** {describe_rate_change(primary.get('DGS30_change_bp'))}",
+        f"- **물가 영향을 뺀 금리:** {describe_rate_change(primary.get('DFII30_change_bp'))}",
+        f"- **일반 국채와 물가연동국채의 금리 차이:** {describe_rate_change(primary.get('INFLCOMP30_change_bp'), gap=True)}",
+        f"- **정리:** {describe_total_sentence(primary.get('DGS30_change_bp'))} 위 두 변화가 합쳐진 결과입니다.",
         "",
-        "> 30년 명목−실질 금리차는 **물가보상 proxy**입니다. 순수한 기대인플레이션으로 단정하지 않습니다.",
+        "> 물가연동국채는 물가 변화가 반영되는 국채입니다. 일반 국채와 물가연동국채의 금리 차이에는 시장의 물가 기대뿐 아니라 물가 위험과 채권 수요·공급 영향도 섞일 수 있습니다.",
     ]
 
     curve = s.get("curve") or {}
-    lines += ["", "### 곡선 움직임", curve.get("text") or "장·단기 금리 곡선은 현재 확인할 수 없습니다."]
+    lines += ["", "### 장·단기 금리 움직임", curve.get("text") or "장·단기 금리 관계는 현재 확인할 수 없습니다."]
 
     tp = s.get("term_premium") or {}
-    lines += ["", "### 10년 Term Premium은 별도 맥락"]
+    lines += ["", "### 참고: 10년 국채를 오래 보유할 때 요구되는 추가 보상"]
     if tp.get("status") == "ok":
-        change = _fmt_bp(tp.get("change_1m_bp"))
+        change = describe_rate_change(tp.get("change_1m_bp"))
         latest = tp.get("latest_value")
         latest_text = "확인 불가" if latest is None else f"{float(latest):.2f}%"
+        if change == "거의 변화 없음":
+            change_sentence = "최근 약 1개월 동안 거의 변하지 않았습니다."
+        else:
+            change_sentence = f"최근 약 1개월 동안 {change}했습니다."
         lines.append(
-            f"현재 {latest_text}, 약 1개월 변화 {change} · {tp.get('direction', '판정불가')}. "
-            "이 값은 위 30년 동일 만기 산술 구성에 더하는 항목이 아닙니다."
+            f"현재 추정치는 {latest_text}이고, {change_sentence} "
+            "10년 국채를 오래 보유할 때 시장이 요구하는 추가 보상을 모형으로 추정한 값입니다. "
+            "위 30년 금리 변화를 나눈 두 항목에 더하는 값은 아닙니다."
         )
     else:
-        lines.append("현재 자료를 확인할 수 없습니다. 이 값은 위 30년 동일 만기 산술 구성과 별도입니다.")
+        lines.append("현재 자료를 확인할 수 없습니다. 이 값은 30년 금리 변화를 나눈 두 항목과는 따로 보는 참고 지표입니다.")
     return "\n".join(lines)
+
+
+def _scan_direction(value: Any) -> str:
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "·"
+    if x > 0.05:
+        return "↑"
+    if x < -0.05:
+        return "↓"
+    return "→"
+
+
+def _scan_summary(real_bp: Any, gap_bp: Any) -> str:
+    try:
+        real = float(real_bp)
+        gap = float(gap_bp)
+    except (TypeError, ValueError):
+        return "두 움직임의 방향은 현재 확인할 수 없습니다."
+    if abs(real) < 0.05 or abs(gap) < 0.05:
+        return "한쪽 움직임이 작아 전체 금리 변화는 다른 쪽의 영향을 더 크게 받았습니다."
+    if real * gap > 0:
+        return "두 움직임이 같은 방향이었습니다."
+    return "두 움직임이 서로 일부 상쇄했습니다."
+
+
+def render_scan_html(summary: dict | None) -> str:
+    """v0.7.4 첫 화면용 30년 금리 시각 브리핑.
+
+    산술 항등식을 인과적 기여도로 오해시키지 않도록 `기여`, `합계`라는 표현을 쓰지 않는다.
+    같은 방향일 때만 막대로 비교하고, 반대 방향이면 숫자와 화살표만 보여준다.
+    """
+    from html import escape
+
+    s = summary or {}
+    if s.get("status") != "ok":
+        reason = escape(str(s.get("reason") or "30년 금리 움직임을 현재 확인할 수 없습니다."))
+        return (
+            '<section class="rr-rate-panel">'
+            '<div class="rr-section-title"><h2>30년 금리</h2></div>'
+            f'<div class="rr-empty">{reason}</div>'
+            '</section>'
+        )
+
+    primary = s.get("primary") or {}
+    total = primary.get("DGS30_change_bp")
+    real = primary.get("DFII30_change_bp")
+    gap = primary.get("INFLCOMP30_change_bp")
+
+    def fmt(value: Any) -> str:
+        return _fmt_change(value)
+
+    def numeric(value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    real_n, gap_n = numeric(real), numeric(gap)
+    same_direction = (
+        real_n is None or gap_n is None
+        or abs(real_n) < 0.05 or abs(gap_n) < 0.05
+        or real_n * gap_n > 0
+    )
+
+    if same_direction:
+        values = [abs(x) for x in (real_n, gap_n) if x is not None]
+        scale = max(values or [1.0])
+
+        def row(label: str, value: Any) -> str:
+            x = numeric(value)
+            width = 4.0 if x is None or abs(x) < 0.05 else min(100.0, max(7.0, abs(x) / scale * 100.0))
+            direction = _scan_direction(value)
+            tone = "up" if direction == "↑" else ("down" if direction == "↓" else "flat")
+            return (
+                '<div class="rr-rate-row">'
+                f'<div class="rr-rate-label"><span>{label}</span><strong>{fmt(value)} {direction}</strong></div>'
+                '<div class="rr-rate-track">'
+                f'<span class="rr-rate-fill rr-rate-{tone}" style="width:{width:.1f}%"></span>'
+                '</div>'
+                '</div>'
+            )
+        movement_html = row("물가 영향 제외", real) + row("국채 금리 차이", gap)
+    else:
+        movement_html = (
+            '<div class="rr-rate-opposite">'
+            f'<div><span>물가 영향 제외</span><strong>{fmt(real)} {_scan_direction(real)}</strong></div>'
+            f'<div><span>국채 금리 차이</span><strong>{fmt(gap)} {_scan_direction(gap)}</strong></div>'
+            '</div>'
+        )
+
+    curve = s.get("curve") or {}
+    curve_text = escape(str(curve.get("text") or "장·단기 금리 관계는 현재 확인할 수 없습니다."))
+    return (
+        '<section class="rr-rate-panel">'
+        '<div class="rr-section-title"><h2>30년 금리</h2><span class="rr-rate-total">'
+        f'{fmt(total)} {_scan_direction(total)}</span></div>'
+        '<div class="rr-rate-kicker">같은 기간 움직임 · 최근 약 1개월</div>'
+        + movement_html
+        + f'<div class="rr-rate-conclusion">{escape(_scan_summary(real, gap))}</div>'
+        + f'<div class="rr-rate-curve">{curve_text}</div>'
+        + '</section>'
+    )

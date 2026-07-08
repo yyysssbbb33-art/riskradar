@@ -86,14 +86,32 @@ def _state_symbol(key: str, state_code: str, drop_flag: bool = False) -> str:
     return "·"
 
 
-def render_core_cards_html(matrix: pd.DataFrame, chart_data: pd.DataFrame, *, changes_only: bool) -> str:
+def _direction_symbol(value: Any) -> str:
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "·"
+    if x > 0:
+        return "↑"
+    if x < 0:
+        return "↓"
+    return "→"
+
+
+def render_core_cards_html(matrix: pd.DataFrame, chart_data: pd.DataFrame, *, changes_only: bool = False) -> str:
+    """핵심 6개를 모바일 2×3 스캔 카드로 보여준다.
+
+    v0.7.4부터 전체 6개가 기본이다. ``changes_only``는 구버전 호출 호환만 유지한다.
+    평소 지표도 숨기지 않고, 눈에 띄는 카드만 시각적 강도를 높인다.
+    """
     if matrix is None or matrix.empty:
         return '<div class="rr-empty">핵심 지표 데이터를 읽을 수 없습니다.</div>'
     chart_data = chart_data if isinstance(chart_data, pd.DataFrame) else pd.DataFrame()
     cards: list[str] = []
     hidden_count = 0
     for _, row in matrix.iterrows():
-        if changes_only and not _core_noteworthy(row):
+        noteworthy = _core_noteworthy(row)
+        if changes_only and not noteworthy:
             hidden_count += 1
             continue
         key = str(row.get("key", ""))
@@ -106,29 +124,83 @@ def render_core_cards_html(matrix: pd.DataFrame, chart_data: pd.DataFrame, *, ch
             d = chart_data.loc[chart_data["key"].astype(str) == key].sort_values("date")
             vals = pd.to_numeric(d["value"], errors="coerce").dropna().tail(24).tolist()
         spark = _sparkline(vals)
+        change = row.get("change_20obs")
+        change_text = fmt_change(change, row.get("change_unit", ""))
+        direction = _direction_symbol(change)
+        card_class = "rr-core-card rr-core-card-hot" if noteworthy else "rr-core-card rr-core-card-quiet"
         cards.append(
-            '<article class="rr-card">'
-            f'<div class="rr-card-name">{escape(core_name(key))}</div>'
-            f'<div class="rr-card-state"><span>{escape(symbol)}</span> {escape(label)}</div>'
-            '<div class="rr-card-grid">'
-            f'<div><small>현재</small><strong>{escape(fmt_value(row.get("latest_value"), row.get("value_unit", "")))}</strong></div>'
-            f'<div><small>약 1개월</small><strong>{escape(fmt_change(row.get("change_20obs"), row.get("change_unit", "")))}</strong></div>'
-            f'<div><small>약 3개월</small><strong>{escape(fmt_change(row.get("change_60obs"), row.get("change_unit", "")))}</strong></div>'
+            f'<article class="{card_class}">'
+            '<div class="rr-core-head">'
+            f'<strong>{escape(core_name(key, short=True))}</strong>'
+            f'<span class="rr-core-state">{escape(symbol)} {escape(label)}</span>'
             '</div>'
-            f'<div class="rr-spark" aria-label="최근 흐름">{escape(spark or "최근 흐름 확인 불가")}</div>'
-            f'<div class="rr-observed">관측일 {escape(_text(row.get("latest_observed_date"), "확인 불가"))}</div>'
+            f'<div class="rr-core-value">{escape(fmt_value(row.get("latest_value"), row.get("value_unit", "")))}</div>'
+            f'<div class="rr-core-change"><span>{escape(direction)}</span> {escape(change_text)} <small>약 1개월</small></div>'
+            f'<div class="rr-core-spark" aria-label="최근 흐름">{escape(spark or "────────")}</div>'
             '</article>'
         )
     if not cards:
-        return (
-            '<div class="rr-empty"><strong>새로 눈에 띄는 핵심 지표 변화가 없습니다.</strong><br>'
-            '아래의 전체 보기로 바꾸면 모든 핵심 지표를 확인할 수 있습니다.</div>'
-        )
+        return '<div class="rr-empty">현재 표시할 핵심 지표가 없습니다.</div>'
     tail = ""
     if changes_only and hidden_count:
-        tail = f'<div class="rr-muted">나머지 {hidden_count}개 핵심 지표에서는 현재 새로 눈에 띄는 변화가 없습니다.</div>'
-    return '<div class="rr-card-grid-wrap">' + "".join(cards) + '</div>' + tail
+        tail = f'<div class="rr-muted">나머지 {hidden_count}개 핵심 지표는 평소 수준입니다.</div>'
+    return '<div class="rr-core-grid">' + "".join(cards) + '</div>' + tail
 
+
+def render_domain_strip_html(data_quality: dict | None, matrix: pd.DataFrame) -> str:
+    """종합점수 없이 신용·금리·변동성 세 영역의 현재 사실만 크게 보여준다."""
+    dq = data_quality or {}
+    credit = dq.get("credit_episode") or {}
+    current = credit.get("current") or {}
+    episode = current.get("episode") or {}
+    participants = [str(x) for x in (episode.get("participants") or [])]
+    nodes = current.get("nodes") or {}
+
+    if participants:
+        credit_main = "·".join(participants) + " 변화"
+        credit_sub = " / ".join(_text((nodes.get(x) or {}).get("state_label"), "확인") for x in participants[:2])
+    elif current:
+        early = [x for x in ("HY", "BBB", "A", "CP") if str((nodes.get(x) or {}).get("state")) == "early_change"]
+        credit_main = ("·".join(early) + " 관찰") if early else "평소"
+        credit_sub = "기업 신용"
+    else:
+        credit_main = "확인 불가"
+        credit_sub = "기업 신용"
+
+    def hit(key: str) -> pd.Series | None:
+        if matrix is None or matrix.empty:
+            return None
+        rows = matrix.loc[matrix["key"].astype(str) == key]
+        return None if rows.empty else rows.iloc[-1]
+
+    rate = hit("DGS30")
+    vix = hit("VIX")
+    if rate is None:
+        rate_main, rate_sub, rate_symbol = "확인 불가", "30년 금리", "·"
+    else:
+        rate_symbol = _direction_symbol(rate.get("change_20obs"))
+        rate_main = f"30Y {rate_symbol}"
+        rate_sub = state_name(str(rate.get("state_code", "")), str(rate.get("state_label", "")), drop=bool(rate.get("drop_flag", False)), key="DGS30")
+    if vix is None:
+        vix_main, vix_sub, vix_symbol = "확인 불가", "변동성", "·"
+    else:
+        vix_symbol = _state_symbol("VIX", str(vix.get("state_code", "")), bool(vix.get("drop_flag", False)))
+        vix_main = state_name(str(vix.get("state_code", "")), str(vix.get("state_label", "")), key="VIX")
+        vix_sub = "VIX"
+
+    cards = [
+        ("신용", credit_main, credit_sub, "●" if participants else "○"),
+        ("금리", rate_main, rate_sub, rate_symbol),
+        ("변동성", vix_main, vix_sub, vix_symbol),
+    ]
+    return '<div class="rr-domain-strip">' + ''.join(
+        '<div class="rr-domain-card">'
+        f'<small>{escape(title)}</small>'
+        f'<strong><span>{escape(symbol)}</span> {escape(main)}</strong>'
+        f'<em>{escape(sub)}</em>'
+        '</div>'
+        for title, main, sub, symbol in cards
+    ) + '</div>'
 
 def _event_name(section: str, key: str) -> str:
     if section == "core":
@@ -221,6 +293,162 @@ def render_recent_changes_markdown(diff: dict | None) -> str:
         lines += ["", "> 일부 기준이나 저장 형식이 바뀐 영역은 이번 비교에서 시장 변화로 보지 않았습니다."]
     return "\n".join(lines)
 
+
+
+def _event_card_name(section: str, key: str) -> str:
+    if section == "core":
+        return core_name(key, short=True)
+    if section == "credit_nodes":
+        return key
+    if section == "credit_lens":
+        return "HY−BBB"
+    if section == "credit_episode":
+        return "신용 흐름"
+    return _event_name(section, key)
+
+
+def _compact_transition_text(value: Any) -> str:
+    text = plain_language(str(value))
+    return text.split(" · ", 1)[0].strip()
+
+
+def render_recent_changes_html(diff: dict | None, *, max_cards: int = 3) -> str:
+    """최근 시장 변화를 발표 슬라이드처럼 사건 카드로 보여준다."""
+    diff = diff or {}
+    status = str(diff.get("status", ""))
+    market = [event for event in (diff.get("market_transitions") or []) if _is_change_center_event(event)]
+    recovery = [event for event in (diff.get("recovery_gap_events") or []) if _is_change_center_event(event)]
+    events = [(event, False) for event in market] + [(event, True) for event in recovery]
+
+    if not diff or status == "cold_start":
+        text = "다음 정상 데이터부터 이전 기록과 비교합니다." if status == "cold_start" else "이전 정상 데이터와 비교할 기록이 아직 없습니다."
+        return f'<section class="rr-section"><div class="rr-section-title"><h2>새로 달라진 점</h2></div><div class="rr-empty">{escape(text)}</div></section>'
+    if not events:
+        return '<section class="rr-section"><div class="rr-section-title"><h2>새로 달라진 점</h2><span class="rr-count">0</span></div><div class="rr-quiet-line">○ 새로 확인된 시장 변화는 없습니다.</div></section>'
+
+    cards: list[str] = []
+    for event, is_recovery in events[:max_cards]:
+        section = str(event.get("section", ""))
+        key = str(event.get("key", ""))
+        name = _event_card_name(section, key)
+        previous = event.get("previous")
+        current = event.get("current")
+        if is_recovery:
+            title = "자료 복구 뒤 상태 변화"
+            path = "공백 이전 상태 → 현재 상태"
+        elif previous is not None and current is not None:
+            title = _compact_transition_text(current)
+            path = f"{_compact_transition_text(previous)} → {_compact_transition_text(current)}"
+        else:
+            title = plain_language(str(event.get("message") or "변화 확인"))
+            path = plain_language(_friendly_event(event).replace("**", ""))
+        symbol = "↑" if any(x in title for x in ("상승", "높", "확대", "오름")) else ("↘" if any(x in title for x in ("되돌", "감소", "축소", "내림")) else "●")
+        cards.append(
+            '<article class="rr-event-card">'
+            '<div class="rr-event-head">'
+            f'<strong>{escape(name)}</strong><span>최근</span>'
+            '</div>'
+            f'<div class="rr-event-title">{escape(symbol)} {escape(title)}</div>'
+            f'<div class="rr-event-path">{escape(path)}</div>'
+            '</article>'
+        )
+    more = len(events) - len(cards)
+    more_html = f'<div class="rr-more">+ {more}개 더 있음 · 상세에서 확인</div>' if more > 0 else ""
+    return (
+        '<section class="rr-section">'
+        f'<div class="rr-section-title"><h2>새로 달라진 점</h2><span class="rr-count">{len(events)}</span></div>'
+        '<div class="rr-event-grid">' + ''.join(cards) + '</div>' + more_html +
+        '</section>'
+    )
+
+
+def render_remaining_changes_html(decision_snapshot: dict | None, data_quality: dict | None) -> str:
+    """지속 중인 상태를 짧은 칩으로 보여준다. 날짜가 확실한 신용만 일수를 계산한다."""
+    snap = decision_snapshot or {}
+    credit_nodes = (((snap.get("credit") or {}).get("nodes")) or {})
+    core = snap.get("core") or {}
+    items: list[tuple[str, str]] = []
+
+    for node in ("HY", "BBB", "A", "CP"):
+        row = credit_nodes.get(node) or {}
+        if str(row.get("source_status", "unavailable")) != "ok":
+            continue
+        state = str(row.get("state", ""))
+        if state not in {"newly_rising", "rising_persistent", "retracing"} and not bool(row.get("participant", False)):
+            continue
+        label = _text(row.get("state_label"), "변화")
+        confirmed_at = row.get("confirmed_at")
+        duration = "지속 중"
+        if confirmed_at:
+            try:
+                end_date = row.get("observed_date") or pd.Timestamp.now(tz="Asia/Seoul").date().isoformat()
+                days = max(1, (pd.Timestamp(end_date).date() - pd.Timestamp(confirmed_at).date()).days + 1)
+                duration = f"{days}일째"
+            except Exception:
+                pass
+        items.append((f"{node} {label}", duration))
+
+    for key, row in core.items():
+        if len(items) >= 4:
+            break
+        if key == "HYOAS" and credit_nodes:
+            continue
+        fake = pd.Series({"key": key, "state_code": row.get("state_code"), "drop_flag": row.get("drop_flag", False)})
+        if _core_noteworthy(fake):
+            label = _text(row.get("state_label"), "변화")
+            items.append((f"{core_name(key, short=True)} {label}", "지속 중"))
+
+    if not items:
+        return '<section class="rr-section rr-compact-section"><div class="rr-section-title"><h2>계속 이어지는 변화</h2></div><div class="rr-quiet-line">○ 뚜렷하게 이어지는 변화가 많지 않습니다.</div></section>'
+    chips = ''.join(
+        '<div class="rr-chip"><span>' + escape(label) + '</span><strong>' + escape(duration) + '</strong></div>'
+        for label, duration in items[:4]
+    )
+    return '<section class="rr-section rr-compact-section"><div class="rr-section-title"><h2>계속 이어지는 변화</h2></div><div class="rr-chip-row">' + chips + '</div></section>'
+
+
+def render_next_checks_html(data_quality: dict | None, decision_snapshot: dict | None) -> str:
+    """다음 확인 대상을 번호와 한 줄로 최대 3개만 보여준다."""
+    dq = data_quality or {}
+    snap = decision_snapshot or {}
+    nodes = (((snap.get("credit") or {}).get("nodes")) or {})
+    checks: list[tuple[str, str]] = []
+
+    def good(node: str) -> bool:
+        return str((nodes.get(node) or {}).get("source_status", "unavailable")) == "ok"
+
+    def participant(node: str) -> bool:
+        return bool((nodes.get(node) or {}).get("participant", False))
+
+    if participant("HY") and not participant("BBB") and good("BBB"):
+        checks.append(("BBB", "다른 신용등급에도 변화가 나타나는지"))
+    elif participant("BBB") and not participant("A") and good("A"):
+        checks.append(("A", "회사채 변화가 더 넓게 나타나는지"))
+    if any(participant(x) for x in ("HY", "BBB", "A")) and not participant("CP") and good("CP"):
+        checks.append(("CP", "단기 기업자금도 함께 움직이는지"))
+    for node in ("HY", "BBB", "A", "CP"):
+        row = nodes.get(node) or {}
+        if participant(node) and str(row.get("state")) in {"newly_rising", "rising_persistent"}:
+            checks.append((node, "부담이 줄기 시작하는지, 더 커지는지"))
+            break
+    if len(checks) < 3:
+        axes = dq.get("axes") or {}
+        changed = [axis_name(x) for x in (axes.get("changed_axes") or [])]
+        for name in changed:
+            if len(checks) >= 3:
+                break
+            checks.append((name, "현재 움직임이 다음 데이터에서도 이어지는지"))
+    if not checks:
+        checks = [("HY OAS", "새 변화가 나타나는지"), ("VIX", "변동성까지 커지는지")]
+
+    rows = ''.join(
+        '<div class="rr-next-item">'
+        f'<span class="rr-next-num">{i}</span>'
+        f'<div><strong>{escape(title)}</strong><small>{escape(text)}</small></div>'
+        '</div>'
+        for i, (title, text) in enumerate(checks[:3], start=1)
+    )
+    return '<section class="rr-section"><div class="rr-section-title"><h2>다음에 볼 것</h2></div><div class="rr-next-list">' + rows + '</div></section>'
 
 def _changed_axis_text(axes: dict) -> str:
     changed = [axis_name(x) for x in (axes.get("changed_axes") or [])]
@@ -324,28 +552,29 @@ def render_next_checks_markdown(data_quality: dict | None, decision_snapshot: di
 
 
 def render_evidence_balance_markdown(data_quality: dict | None, aux_df: pd.DataFrame | None) -> str:
+    """상세 아코디언 안에서도 긴 문단 대신 결론·근거·반대 근거로 구조화한다."""
     dq = data_quality or {}
     readings = dq.get("readings") or []
-    lines = ["## 현재 상황을 이렇게 봅니다"]
+    lines = ["### 현재 판단"]
+    rows: list[tuple[str, str]] = []
+    weakened: list[str] = []
+
     if readings:
         reading = readings[0]
         label = plain_language(str(reading.get("label", "현재 가장 잘 맞는 설명")))
         observed = plain_language(str(reading.get("observed", "")))
-        lines += ["", f"### {label}", observed]
+        lines += ["", f"**{label}**", "", observed]
         explanations = {str(x.get("id")): plain_language(str(x.get("text", ""))) for x in reading.get("explanations", [])}
         supported = [explanations[x] for x in (reading.get("supported_ids") or []) if x in explanations][:2]
         weakened = [explanations[x] for x in (reading.get("weakened_ids") or []) if x in explanations][:1]
-        if supported:
-            lines += ["", "### 가장 중요한 근거"] + [f"- {x}" for x in supported]
-        if weakened:
-            lines += ["", "### 아직 단정하기 어려운 점"] + [f"- {x}" for x in weakened]
+        rows.extend(("근거", x) for x in supported)
     else:
         credit = dq.get("credit_episode") or {}
         current = credit.get("current") or {}
         if current:
-            lines += ["", "### 현재 가장 먼저 볼 설명", _text(current.get("scope_text"))]
+            lines += ["", _text(current.get("scope_text"))]
         else:
-            lines += ["", "현재 정의된 조합 중 앞에 내세울 설명이 뚜렷하지 않습니다."]
+            lines += ["", "현재 앞에 내세울 해석이 뚜렷하지 않습니다."]
 
     missing: list[str] = []
     if aux_df is not None and not aux_df.empty:
@@ -354,13 +583,19 @@ def render_evidence_balance_markdown(data_quality: dict | None, aux_df: pd.DataF
                 break
             if str(row.get("staleness_label", "normal")) == "stale" or str(row.get("fetch_status", "ok")) in {"failed", "carried_forward"}:
                 missing.append(aux_name(str(row.get("key", ""))))
+
+    if rows:
+        lines += ["", "| 구분 | 내용 |", "|---|---|"]
+        lines.extend(f"| {kind} | {text} |" for kind, text in rows)
+    if weakened:
+        lines += ["", "**반대로 볼 점**", "", weakened[0]]
     if missing:
-        lines += ["", "### 현재 확인이 어려운 부분"] + [f"- {name}: 자료 상태 때문에 현재 해석에서는 조심해서 봅니다." for name in missing]
-    lines += ["", "> 근거 개수를 점수처럼 세지 않습니다. 가장 중요한 근거와 반대로 볼 만한 점만 압축해서 보여줍니다."]
+        lines += ["", "**현재 확인이 어려운 부분**", ""] + [f"- {name}: 자료 상태 때문에 조심해서 봅니다." for name in missing]
+    lines += ["", "> 근거 개수를 점수처럼 세지 않습니다. 중요한 근거와 반대로 볼 점만 보여줍니다."]
     return "\n".join(lines)
 
-
 def render_credit_range_map_html(data_quality: dict | None) -> str:
+    """HY·BBB·A·CP를 한눈에 보는 2×2 개인용 상태 지도."""
     credit = (data_quality or {}).get("credit_episode") or {}
     current = credit.get("current") or {}
     nodes = current.get("nodes") or {}
@@ -370,38 +605,42 @@ def render_credit_range_map_html(data_quality: dict | None) -> str:
     if not current:
         return '<div class="rr-empty">기업 신용 상태를 읽을 수 없습니다.</div>'
 
+    subtitles = {
+        "HY": "낮은 등급 회사채",
+        "BBB": "투자등급 경계",
+        "A": "우량 회사채",
+        "CP": "단기 기업자금",
+    }
+
     def node_card(node: str) -> str:
         row = nodes.get(node) or {}
         available = bool(row.get("available", False))
         state = str(row.get("state", "unavailable"))
         label = _text(row.get("state_label"), "확인 불가") if available else "확인 불가"
         symbol = _STATE_SYMBOLS.get(state, "○" if state in {"normal", "normalized"} else "?")
-        participant = "변화 나타남" if node in participants else "뚜렷한 변화 없음"
+        hot = node in participants or state == "early_change"
+        cls = "rr-credit-tile rr-credit-tile-hot" if hot else "rr-credit-tile rr-credit-tile-quiet"
         return (
-            '<div class="rr-credit-node">'
-            f'<strong>{escape(node)}</strong>'
-            f'<span class="rr-credit-state">{escape(symbol)} {escape(label)}</span>'
-            f'<small>{escape(participant)}</small>'
+            f'<div class="{cls}">'
+            '<div class="rr-credit-tile-head">'
+            f'<strong>{escape(node)}</strong><small>{escape(subtitles[node])}</small>'
+            '</div>'
+            f'<div class="rr-credit-tile-state">{escape(symbol)} {escape(label)}</div>'
             '</div>'
         )
 
-    scope = _text(current.get("scope_text"))
-    episode_label = _text(episode.get("state_label"), "현재 변화 흐름 없음")
+    scope = _text(current.get("scope_text"), "현재 범위를 확인할 수 없습니다.")
     lens_label = _text(lens.get("label"), "확인 불가")
     return (
-        '<div class="rr-credit-map">'
-        f'<div class="rr-credit-summary"><strong>현재 변화 범위</strong><span>{escape(scope)}</span>'
-        f'<small>현재 흐름: {escape(episode_label)}</small></div>'
-        '<div class="rr-credit-group"><div class="rr-group-title">회사채</div><div class="rr-credit-row">'
-        + node_card("HY") + node_card("BBB") + node_card("A") +
-        '</div></div>'
-        '<div class="rr-credit-group"><div class="rr-group-title">단기 기업자금시장</div><div class="rr-credit-row rr-credit-row-single">'
-        + node_card("CP") +
-        '</div></div>'
-        f'<div class="rr-credit-lens"><strong>저신용 기업 쪽 상대 부담(HY−BBB)</strong><span>{escape(lens_label)}</span></div>'
+        '<section class="rr-credit-visual">'
+        '<div class="rr-section-title"><h2>기업 신용</h2></div>'
+        '<div class="rr-credit-grid-2x2">'
+        + ''.join(node_card(node) for node in ("HY", "BBB", "A", "CP")) +
         '</div>'
+        f'<div class="rr-credit-scope">{escape(scope)}</div>'
+        f'<div class="rr-credit-lens-line"><span>HY−BBB</span><strong>{escape(lens_label)}</strong></div>'
+        '</section>'
     )
-
 
 def render_data_health_badge(status: dict | None, data_quality: dict | None, decision_diff: dict | None, load_errors: list[str] | None) -> str:
     status = status or {}

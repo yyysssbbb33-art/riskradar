@@ -361,8 +361,8 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
         tp = _aux_direction_text(aux_df, "TERMPREM")
         lines.append(
             f"- 2년 금리 하락·30년 금리 상승이 엇갈렸습니다. 현재 **{aux_name('BREAKEVEN')}**은 `{be}`, "
-            f"**{aux_name('TERMPREM')}**은 `{tp}`입니다. 두 값은 10년 구간의 참고 맥락이며, "
-            "30년 금리 변화의 직접 구성은 첫 화면의 30년 동일 만기 패널을 우선합니다."
+            f"**{aux_name('TERMPREM')}**은 `{tp}`입니다. 두 값은 10년 구간을 이해하는 참고 자료이며, "
+            "30년 금리 변화는 첫 화면의 ‘30년 미국 국채금리 변화 나눠보기’에서 먼저 봅니다."
         )
         added += 1
 

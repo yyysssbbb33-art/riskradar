@@ -52,7 +52,7 @@ def test_indicator_names_are_explanatory_not_market_acronyms():
     assert core_name("T10Y3M") == "10년-3개월 국채금리 차이(10Y-3M)"
     assert core_name("DFII10") == "물가 영향을 뺀 10년 금리(10Y Real Yield)"
     assert aux_name("IGOAS") == "투자등급 회사채 전체 평균 추가 금리(IG OAS)"
-    assert aux_name("TERMPREM") == "장기채 보유에 요구되는 추가 보상(10Y Term Premium)"
+    assert aux_name("TERMPREM") == "10년 장기채 추가 보상(10Y Term Premium)"
 
 
 def test_historical_position_reads_as_rank_not_probability():
