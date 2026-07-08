@@ -29,10 +29,10 @@ _STATE_SYMBOLS = {
 }
 
 _CREDIT_NAMES = {
-    "HY": "신용등급 낮은 기업",
-    "BBB": "투자등급 경계 기업",
-    "A": "A등급 기업",
-    "CP": "단기 기업자금",
+    "HY": "신용등급이 낮은 기업(HY)",
+    "BBB": "투자등급 경계 기업(BBB)",
+    "A": "A등급 기업(A)",
+    "CP": "단기 기업자금시장(CP)",
 }
 
 
@@ -139,7 +139,7 @@ def _event_name(section: str, key: str) -> str:
     if section == "credit_lens":
         return "HY-BBB 등급 차이"
     if section == "credit_episode":
-        return "기업 신용 에피소드"
+        return "기업 신용 변화 흐름"
     return key
 
 
@@ -154,8 +154,8 @@ def _friendly_event(event: dict) -> str:
         return f"**{name}**: {plain_language(str(previous))} → {plain_language(str(current))}"
     if section == "credit_episode":
         if transition_type == "observation_clock_transition":
-            return "**기업 신용 에피소드**가 관측 흐름상 휴면 또는 종료 상태로 바뀌었습니다."
-        return "**기업 신용 에피소드**의 상태 또는 참여 범위가 바뀌었습니다."
+            return "**기업 신용 변화 흐름**가 관측 흐름상 휴면 또는 종료 상태로 바뀌었습니다."
+        return "**기업 신용 변화 흐름**의 상태 또는 변화가 나타난 곳이 바뀌었습니다."
     return plain_language(str(event.get("message", "변화가 기록됐습니다.")))
 
 
@@ -167,36 +167,36 @@ def render_recent_changes_markdown(diff: dict | None) -> str:
     recovery = diff.get("recovery_gap_events") or []
     boundaries = diff.get("schema_boundaries") or []
 
-    lines = ["## 최근 갱신에서 달라진 것"]
+    lines = ["## 새로 달라진 점"]
     if not diff:
-        lines.append("아직 권위 있는 배치 비교 기록이 없습니다. v0.6.2 이후 정상 배치가 두 번 쌓이면 변화 비교가 시작됩니다.")
+        lines.append("아직 이전 정상 데이터와 비교할 기록이 없습니다. 정상 데이터가 두 번 쌓이면 새로 달라진 점을 보여줍니다.")
         return "\n\n".join(lines)
     if status == "cold_start":
-        lines.append("이번 배치는 첫 권위 있는 판정 기록입니다. 다음 정상 배치부터 실제 변화 비교가 시작됩니다.")
+        lines.append("이번 데이터가 첫 기준 기록입니다. 다음 정상 데이터부터 새로 달라진 점을 비교합니다.")
         return "\n\n".join(lines)
 
     if market:
-        lines += ["", "### 시장 판정 변화"]
+        lines += ["", "### 시장에서 새로 보이는 변화"]
         for event in market[:5]:
             lines.append(f"- {_friendly_event(event)}")
     else:
-        lines += ["", "**새로 확인된 시장 판정 변화는 없습니다.**"]
+        lines += ["", "**새로 확인된 시장 변화는 없습니다.**"]
 
     if recovery:
-        lines += ["", "### 복구 뒤 확인된 변화"]
+        lines += ["", "### 자료 복구 뒤 확인된 변화"]
         for event in recovery[:3]:
             name = _event_name(str(event.get("section", "")), str(event.get("key", "")))
             lines.append(
-                f"- **{name}** 자료가 복구됐고 공백 이전과 판정이 달라졌습니다. "
-                "공백 중 정확히 언제 변화했는지는 확인할 수 없습니다."
+                f"- **{name}** 자료가 다시 들어왔고 공백 이전과 상태가 달라졌습니다. "
+                "자료가 비어 있던 기간 중 정확히 언제 달라졌는지는 확인할 수 없습니다."
             )
     if data_events:
         lines += ["", "### 데이터 확인 필요"]
         for event in data_events[:4]:
             name = _event_name(str(event.get("section", "")), str(event.get("key", "")))
-            lines.append(f"- **{name}**의 데이터 상태가 바뀌었습니다. 시장 변화와는 따로 봅니다.")
+            lines.append(f"- **{name}**의 데이터 상태가 바뀌었습니다. 시장 변화와 구분해서 봅니다.")
     if boundaries:
-        lines += ["", "> 일부 판정 기준 또는 스냅샷 형식이 바뀐 영역은 이번 비교에서 시장 변화로 세지 않았습니다."]
+        lines += ["", "> 일부 기준이나 저장 형식이 바뀐 영역은 이번 비교에서 시장 변화로 보지 않았습니다."]
     return "\n".join(lines)
 
 
@@ -221,11 +221,11 @@ def render_today_one_line_markdown(data_quality: dict | None) -> str:
         scope_clean = scope.rstrip(".。 ")
         first = f"기업 신용에서는 **{scope_clean}**."
     elif current:
-        first = "기업 신용에서는 현재 새로 확인된 참여 범위가 크지 않습니다."
+        first = "기업 신용에서는 현재 뚜렷한 변화가 크지 않습니다."
     else:
-        first = "기업 신용 범위는 현재 확인할 수 없습니다."
+        first = "기업 신용 상태는 현재 확인할 수 없습니다."
     second = _changed_axis_text(axes) if axes else "시장 전체 영역 비교는 현재 확인할 수 없습니다."
-    return "# 오늘 한 줄\n\n" + first + " " + second
+    return "# 현재 상황\n\n" + first + " " + second
 
 
 def render_remaining_changes_markdown(decision_snapshot: dict | None, data_quality: dict | None) -> str:
@@ -250,11 +250,11 @@ def render_remaining_changes_markdown(decision_snapshot: dict | None, data_quali
         fake = pd.Series({"key": key, "state_code": code, "drop_flag": drop})
         if _core_noteworthy(fake):
             items.append(f"**{core_name(key)}**: {_text(row.get('state_label'))}")
-    lines = ["## 아직 남아 있는 것"]
+    lines = ["## 계속 이어지는 변화"]
     if items:
         lines.extend(f"- {x}" for x in items[:4])
     else:
-        lines.append("현재 상태에서 계속 추적할 만큼 뚜렷하게 남아 있는 변화는 많지 않습니다.")
+        lines.append("현재 계속 이어진다고 볼 만한 뚜렷한 변화는 많지 않습니다.")
     return "\n".join(lines)
 
 
@@ -271,31 +271,31 @@ def render_next_checks_markdown(data_quality: dict | None, decision_snapshot: di
         return bool((nodes.get(node) or {}).get("participant", False))
 
     if participant("HY") and not participant("BBB") and good("BBB"):
-        checks.append(("투자등급 경계 기업", "현재 미참여", "움직이면 회사채 부담 변화가 투자등급 경계까지 넓어진 것으로 봅니다."))
+        checks.append(("투자등급 경계 기업", "뚜렷한 변화 없음", "여기에서도 변화가 나타나면 회사채 부담이 투자등급 경계 기업까지 이어지는지 봅니다."))
     elif participant("BBB") and not participant("A") and good("A"):
-        checks.append(("A등급 기업", "현재 미참여", "움직이면 회사채 부담 변화가 투자등급 안쪽까지 더 넓어진 것으로 봅니다."))
+        checks.append(("A등급 기업", "뚜렷한 변화 없음", "여기에서도 변화가 나타나면 회사채 부담이 A등급 기업까지 이어지는지 봅니다."))
     elif participant("A"):
         checks.append(("A등급 기업", _text((nodes.get("A") or {}).get("state_label")), "되돌림이 시작되는지, 기존 변화가 더 이어지는지 봅니다."))
 
     if any(participant(x) for x in ("HY", "BBB", "A")) and not participant("CP") and good("CP"):
-        checks.append(("단기 기업자금", "현재 미참여", "움직이면 회사채뿐 아니라 단기 기업자금시장도 같은 시기에 참여하는지 확인합니다."))
+        checks.append(("단기 기업자금", "뚜렷한 변화 없음", "여기에서도 변화가 나타나면 회사채의 변화가 단기 기업자금시장까지 함께 나타나는지 봅니다."))
 
     for node in ("HY", "BBB", "A", "CP"):
         row = nodes.get(node) or {}
         state = str(row.get("state", ""))
         if participant(node) and state in {"newly_rising", "rising_persistent"}:
-            checks.append((_CREDIT_NAMES[node], _text(row.get("state_label")), "되돌림이 시작되는지, 새로운 고점과 의미 있는 활동이 이어지는지 봅니다."))
+            checks.append((_CREDIT_NAMES[node], _text(row.get("state_label")), "되돌림이 시작되는지, 아니면 부담이 다시 커지는지 봅니다."))
             break
 
     if not checks:
         axes = dq.get("axes") or {}
         changed = [axis_name(x) for x in (axes.get("changed_axes") or [])]
         if changed:
-            checks.append((changed[0], "현재 변화 있음", "현재 움직임이 다음 갱신에서도 이어지는지와 다른 영역이 새로 참여하는지 봅니다."))
+            checks.append((changed[0], "현재 변화 있음", "현재 움직임이 다음 데이터에서도 이어지는지, 다른 영역에서도 변화가 나타나는지 봅니다."))
         else:
-            checks.append(("신용등급 낮은 기업과 VIX", "현재 큰 변화 적음", "둘 중 하나가 먼저 커지는지보다, 실제 새 변화가 지속되고 다른 시장도 참여하는지 봅니다."))
+            checks.append(("HY OAS와 VIX", "현재 큰 변화 적음", "어느 쪽이 먼저 움직였는지보다, 새 변화가 이어지는지와 다른 시장에서도 변화가 나타나는지를 봅니다."))
 
-    lines = ["## 다음 확인"]
+    lines = ["## 다음에 볼 것"]
     for title, current, meaning in checks[:3]:
         lines += ["", f"### {title}", f"현재: **{current}**", meaning]
     return "\n".join(lines)
@@ -304,7 +304,7 @@ def render_next_checks_markdown(data_quality: dict | None, decision_snapshot: di
 def render_evidence_balance_markdown(data_quality: dict | None, aux_df: pd.DataFrame | None) -> str:
     dq = data_quality or {}
     readings = dq.get("readings") or []
-    lines = ["## 현재 설명을 읽을 때"]
+    lines = ["## 현재 상황을 이렇게 봅니다"]
     if readings:
         reading = readings[0]
         label = plain_language(str(reading.get("label", "현재 가장 잘 맞는 설명")))
@@ -314,9 +314,9 @@ def render_evidence_balance_markdown(data_quality: dict | None, aux_df: pd.DataF
         supported = [explanations[x] for x in (reading.get("supported_ids") or []) if x in explanations][:2]
         weakened = [explanations[x] for x in (reading.get("weakened_ids") or []) if x in explanations][:1]
         if supported:
-            lines += ["", "### 핵심 근거"] + [f"- {x}" for x in supported]
+            lines += ["", "### 가장 중요한 근거"] + [f"- {x}" for x in supported]
         if weakened:
-            lines += ["", "### 이 설명을 넓게 말하기 어려운 가장 큰 이유"] + [f"- {x}" for x in weakened]
+            lines += ["", "### 아직 단정하기 어려운 점"] + [f"- {x}" for x in weakened]
     else:
         credit = dq.get("credit_episode") or {}
         current = credit.get("current") or {}
@@ -333,8 +333,8 @@ def render_evidence_balance_markdown(data_quality: dict | None, aux_df: pd.DataF
             if str(row.get("staleness_label", "normal")) == "stale" or str(row.get("fetch_status", "ok")) in {"failed", "carried_forward"}:
                 missing.append(aux_name(str(row.get("key", ""))))
     if missing:
-        lines += ["", "### 현재 확인 부족"] + [f"- {name}: 자료 상태 때문에 현재 해석에서 제한적으로 봅니다." for name in missing]
-    lines += ["", "> 근거 개수를 세어 점수처럼 읽지 않습니다. 가장 중요한 근거와 가장 강한 반대 근거만 압축해 보여줍니다."]
+        lines += ["", "### 현재 확인이 어려운 부분"] + [f"- {name}: 자료 상태 때문에 현재 해석에서는 조심해서 봅니다." for name in missing]
+    lines += ["", "> 근거 개수를 점수처럼 세지 않습니다. 가장 중요한 근거와 반대로 볼 만한 점만 압축해서 보여줍니다."]
     return "\n".join(lines)
 
 
@@ -346,7 +346,7 @@ def render_credit_range_map_html(data_quality: dict | None) -> str:
     participants = {str(x) for x in (episode.get("participants") or [])}
     lens = credit.get("lens") or {}
     if not current:
-        return '<div class="rr-empty">기업 신용 범위·지속 결과를 읽을 수 없습니다.</div>'
+        return '<div class="rr-empty">기업 신용 상태를 읽을 수 없습니다.</div>'
 
     def node_card(node: str) -> str:
         row = nodes.get(node) or {}
@@ -354,7 +354,7 @@ def render_credit_range_map_html(data_quality: dict | None) -> str:
         state = str(row.get("state", "unavailable"))
         label = _text(row.get("state_label"), "확인 불가") if available else "확인 불가"
         symbol = _STATE_SYMBOLS.get(state, "○" if state in {"normal", "normalized"} else "?")
-        participant = "참여 중" if node in participants else "미참여"
+        participant = "변화 나타남" if node in participants else "뚜렷한 변화 없음"
         return (
             '<div class="rr-credit-node">'
             f'<strong>{escape(node)}</strong>'
@@ -364,19 +364,19 @@ def render_credit_range_map_html(data_quality: dict | None) -> str:
         )
 
     scope = _text(current.get("scope_text"))
-    episode_label = _text(episode.get("state_label"), "현재 에피소드 없음")
+    episode_label = _text(episode.get("state_label"), "현재 변화 흐름 없음")
     lens_label = _text(lens.get("label"), "확인 불가")
     return (
         '<div class="rr-credit-map">'
-        f'<div class="rr-credit-summary"><strong>현재 범위</strong><span>{escape(scope)}</span>'
-        f'<small>에피소드: {escape(episode_label)}</small></div>'
+        f'<div class="rr-credit-summary"><strong>현재 변화가 나타난 곳</strong><span>{escape(scope)}</span>'
+        f'<small>현재 흐름: {escape(episode_label)}</small></div>'
         '<div class="rr-credit-group"><div class="rr-group-title">회사채</div><div class="rr-credit-row">'
         + node_card("HY") + node_card("BBB") + node_card("A") +
         '</div></div>'
-        '<div class="rr-credit-group"><div class="rr-group-title">다른 자금시장</div><div class="rr-credit-row rr-credit-row-single">'
+        '<div class="rr-credit-group"><div class="rr-group-title">단기 기업자금시장</div><div class="rr-credit-row rr-credit-row-single">'
         + node_card("CP") +
         '</div></div>'
-        f'<div class="rr-credit-lens"><strong>등급 간 차별 · HY−BBB</strong><span>{escape(lens_label)}</span></div>'
+        f'<div class="rr-credit-lens"><strong>저신용 기업 쪽 상대 부담(HY−BBB)</strong><span>{escape(lens_label)}</span></div>'
         '</div>'
     )
 

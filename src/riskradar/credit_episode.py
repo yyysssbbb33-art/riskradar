@@ -1,15 +1,15 @@
-"""기업 신용 범위·지속 에피소드 엔진.
+"""기업 신용 범위·지속 변화 흐름 엔진.
 
 목적
-- 순서를 억지로 주장하지 않고, 현재 어떤 실제 시장이 참여하고 있는지 본다.
+- 순서를 억지로 주장하지 않고, 현재 어떤 실제 시장이 변화하고 있는지 본다.
 - 실제 시장 노드는 HY / BBB / A / CP 네 개만 사용한다.
-- HY-BBB는 별도 시장이 아니라 저신용 집중도를 읽는 해석 렌즈다.
-- VIX는 신용 사슬의 노드가 아니라 에피소드 시작 무렵의 주식시장 맥락이다.
+- HY-BBB는 별도 시장이 아니라 저신용 집중도를 읽는 해석 기준다.
+- VIX는 신용 사슬의 노드가 아니라 변화 흐름 시작 무렵의 주식시장 맥락이다.
 
 v0.6.0 원칙
 - 최근 공식 자료 범위 안에서 변화 강도·지속·잔존을 본다.
 - 최근 3년 분포는 장기 역사 희귀도가 아니라 현재 운영 기준의 비교 범위다.
-- 변화 시작은 변화 강도, 지속/되돌림/정상화는 동결된 사전 기준선 대비 잔존 변화로 본다.
+- 변화 시작은 변화 강도, 지속/되돌림/정상화는 동결된 사전 기준선 대비 계속되는 변화로 본다.
 - 추정 시작일과 기준선은 확정 순간 동결하고 이후 소급 수정하지 않는다.
 - 사용자 출력에서 선행/후행을 주장하지 않지만 관련 타임스탬프는 처음부터 저장한다.
 """
@@ -34,17 +34,17 @@ NODE_NAMES = {
 NODE_STATE_LABELS = {
     "normal": "평소 상태",
     "early_change": "초기 변화",
-    "newly_rising": "새로 상승",
+    "newly_rising": "상승 확인",
     "rising_persistent": "상승 지속",
     "retracing": "되돌림",
     "normalized": "정상화",
 }
 
 EPISODE_STATE_LABELS = {
-    "active": "활성",
-    "dormant": "휴면",
-    "ended": "종료",
-    "none": "현재 에피소드 없음",
+    "active": "변화 진행 중",
+    "dormant": "한동안 새 변화 없음",
+    "ended": "정상화",
+    "none": "현재 뚜렷한 변화 없음",
 }
 
 
@@ -328,7 +328,7 @@ def _asof_node_row(hist: pd.DataFrame, dt: pd.Timestamp) -> pd.Series | None:
 
 
 def _build_episode_records(node_histories: dict[str, pd.DataFrame], cfg: CreditEpisodeCfg) -> pd.DataFrame:
-    """노드 상태 기록을 한 번만 훑어 에피소드 레코드를 만든다.
+    """노드 상태 기록을 한 번만 훑어 변화 흐름 레코드를 만든다.
 
     날짜별 ``loc``/과거 재검색을 피하고 노드별 포인터를 전진시켜 전체 복잡도를
     관측치 수에 거의 선형으로 유지한다.
@@ -394,7 +394,7 @@ def _build_episode_records(node_histories: dict[str, pd.DataFrame], cfg: CreditE
                 episodes.append(current)
                 current = None
 
-        # 휴면 뒤 같은 노드의 재확대도 새 에피소드로 분리한다. 잔존 변화는 주석으로 남긴다.
+        # 휴면 뒤 같은 노드의 재확대도 새 변화 흐름로 분리한다. 계속되는 변화는 주석으로 남긴다.
         if current is not None and current["state"] == "dormant" and expansion_activity_nodes and not confirmed_nodes:
             prior_residual = []
             for node in current["participants"]:
@@ -502,7 +502,7 @@ def _scope_text(nodes: dict[str, dict]) -> str:
     if not confirmed:
         if early:
             names = "·".join(NODE_NAMES[n] for n in early)
-            return f"공식 참여로 확정되기 전의 초기 변화가 {names}에서 관찰되고 있습니다."
+            return f"뚜렷한 변화로 확정되기 전의 초기 변화가 {names}에서 관찰되고 있습니다."
         return "현재 기업 신용시장에서 새로 이어지는 범위 변화는 뚜렷하지 않습니다."
     if confirmed == ["HY"]:
         text = "현재 확인된 변화는 신용등급 낮은 기업의 회사채에 집중돼 있습니다."
@@ -516,9 +516,9 @@ def _scope_text(nodes: dict[str, dict]) -> str:
             parts.append("A등급 기업")
         text = "회사채 변화가 " + "·".join(parts) + "에서 확인되고 있습니다." if parts else ""
         if "CP" in confirmed:
-            text += (" " if text else "") + "단기 기업자금시장도 함께 참여하고 있습니다."
+            text += (" " if text else "") + "단기 기업자금시장도 함께 변화하고 있습니다."
         else:
-            text += (" " if text else "") + "단기 기업자금시장까지 번진 모습은 아직 뚜렷하지 않습니다."
+            text += (" " if text else "") + "단기 기업자금시장까지 이어진 모습은 아직 뚜렷하지 않습니다."
     if early:
         text += " " + "·".join(NODE_NAMES[n] for n in early) + "에서는 초기 변화를 관찰 중입니다."
     return text.strip()
@@ -567,7 +567,7 @@ def _vix_context(vix_frame: pd.DataFrame | None, current_episode: dict | None) -
     current_state = str(v.iloc[-1].get("state_code", ""))
     current = "주식시장 불안이 현재도 높음" if current_state in {"watch", "stress"} else "주식시장 불안은 현재 평소 수준"
     if not current_episode or not current_episode.get("started_at"):
-        return {"available": True, "onset": "현재 신용 에피소드 없음", "current": current}
+        return {"available": True, "onset": "현재 신용 변화 흐름 없음", "current": current}
     onset = pd.Timestamp(current_episode["started_at"])
     window = v.loc[(pd.to_datetime(v["date"]) >= onset - pd.Timedelta(days=7)) &
                    (pd.to_datetime(v["date"]) <= onset + pd.Timedelta(days=7))]
@@ -597,7 +597,7 @@ def _cp_calendar_context(nodes: dict[str, dict]) -> dict:
 def build_credit_episode(node_frames: dict[str, pd.DataFrame],
                          vix_frame: pd.DataFrame | None = None,
                          cfg: CreditEpisodeCfg = DEFAULT_CFG) -> CreditEpisodeResult:
-    """네 시장 노드의 최근 경로를 범위·지속 에피소드로 읽는다.
+    """네 시장 노드의 최근 경로를 범위·지속 변화 흐름로 읽는다.
 
     node_frames 값 단위는 모두 bp여야 한다.
     """
@@ -666,7 +666,7 @@ def build_credit_episode(node_frames: dict[str, pd.DataFrame],
 
 def raw_to_node_frames(core_frames: dict[str, pd.DataFrame],
                        aux_raw_frames: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """기존 핵심/확인지표 raw 프레임을 네 신용 노드 공통 단위(bp)로 맞춘다."""
+    """기존 핵심/함께 볼 지표 raw 프레임을 네 신용 노드 공통 단위(bp)로 맞춘다."""
     out: dict[str, pd.DataFrame] = {}
     hy = core_frames.get("HYOAS")
     if hy is not None and not hy.empty:

@@ -48,11 +48,11 @@ def test_cycle_states_describe_what_is_happening():
 
 
 def test_indicator_names_are_explanatory_not_market_acronyms():
-    assert core_name("HYOAS") == "신용등급 낮은 기업의 추가금리"
-    assert core_name("T10Y3M") == "10년 금리와 3개월 금리의 차이"
-    assert core_name("DFII10") == "물가 영향을 뺀 10년 금리"
-    assert aux_name("IGOAS") == "신용등급 높은 기업의 추가금리"
-    assert aux_name("TERMPREM") == "장기채 추가 보상"
+    assert core_name("HYOAS") == "신용등급이 낮은 기업의 추가 금리(HY OAS)"
+    assert core_name("T10Y3M") == "10년-3개월 국채금리 차이(10Y-3M)"
+    assert core_name("DFII10") == "물가 영향을 뺀 10년 금리(10Y Real Yield)"
+    assert aux_name("IGOAS") == "투자등급 회사채 전체 평균 추가 금리(IG OAS)"
+    assert aux_name("TERMPREM") == "장기채 보유에 요구되는 추가 보상(10Y Term Premium)"
 
 
 def test_historical_position_reads_as_rank_not_probability():
@@ -68,7 +68,7 @@ def test_current_board_uses_plain_columns_and_names():
     assert "최근 5년 중 현재 위치" in board.columns
     assert "최근 10년 중 현재 위치" in board.columns
     text = "\n".join(board.astype(str).to_numpy().ravel())
-    assert "HY OAS" not in text
+    assert "HY OAS" in text
     assert "20obs" not in text
     assert "60obs" not in text
 
@@ -90,12 +90,12 @@ def test_full_render_does_not_leak_old_jargon():
 
     forbidden = [
         "재정상화", "역전 해소", "오래된 역전", "장기 역전",
-        "복합 조망", "기준상 변화", "HY OAS", "IG OAS",
-        "Term Premium", "Breakeven", "실질금리", "명목금리",
+        "복합 조망", "기준상 변화",
+        "실질금리", "명목금리",
         "인플레이션 보상", "정책경로", "평탄화", "판정불가",
         "변동성·신용", "경기 사이클", "하이일드", "투자등급 신용스프레드",
         "수익률곡선", "시장 기반 물가전망", "장기채 추가보상",
-        "저신용 기업",
+        
     ]
     for word in forbidden:
         assert word not in text, word

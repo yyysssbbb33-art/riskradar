@@ -23,10 +23,10 @@ def _weekly(values):
 
 
 def test_user_facing_terms_are_fixed():
-    assert AUX_NAMES["CPSPREAD"] == "기업 신용도에 따른 단기자금 금리 차이"
-    assert AUX_NAMES["BBBOAS"] == "투자등급 경계 기업의 추가금리"
-    assert AUX_NAMES["NFCI"] == "미국 금융시장 전반의 자금 사정"
-    assert AUX_NAMES["STLFSI"] == "미국 금융시장 전반의 불안"
+    assert AUX_NAMES["CPSPREAD"] == "단기 기업자금 금리차(CP Spread)"
+    assert AUX_NAMES["BBBOAS"] == "투자등급 경계 기업의 추가 금리(BBB OAS)"
+    assert AUX_NAMES["NFCI"] == "미국 금융여건(NFCI)"
+    assert AUX_NAMES["STLFSI"] == "미국 금융시장 스트레스(STLFSI)"
 
 
 def test_cp_spread_is_a2p2_minus_aa_on_matching_dates(monkeypatch):
@@ -117,11 +117,11 @@ def _aux_df_for_view():
 def test_today_view_groups_new_indicators_by_question():
     md = render_today_markdown({}, _aux_df_for_view())
     assert "장기금리가 왜 움직이나" in md
-    assert "기업 부담이 어디까지 번졌나" in md
+    assert "기업 신용 부담이 어디에서 나타나나" in md
     assert "단기 자금시장도 영향을 받고 있나" in md
-    assert "외부 종합 참고" in md
-    assert "기업 신용도에 따른 단기자금 금리 차이" in md
-    assert "투자등급 경계 기업의 추가금리" in md
+    assert "외부 참고 지표" in md
+    assert "단기 기업자금 금리차(CP Spread)" in md
+    assert "투자등급 경계 기업의 추가 금리(BBB OAS)" in md
     assert "RiskRadar 해석 엔진에 넣지 않고" in md
 
 
@@ -144,5 +144,5 @@ def test_telegram_summarizes_axes_instead_of_listing_six_rows():
     assert "현재 3개 영역 중 2개" in text
     assert "주식시장 쪽만 움직임" in text
     assert "눈에 띄는 조합" in text
-    assert "기업 신용 범위와 지속" in text and "단기자금" in text and "외부 참고" in text
+    assert "회사채 등급 차이" in text and "외부 참고" in text
     assert "캐시:" not in text

@@ -54,8 +54,8 @@ def test_renders_axes_and_reading():
 
 def test_aux_directions_shown():
     md = render_today_markdown(_dq(), _aux_df())
-    assert "채권시장이 보는 10년 물가 예상" in md and "오르는 중" in md
-    assert "확인 불가" in md  # 장기채 추가보상
+    assert "채권시장이 예상하는 10년 물가상승률(10Y Breakeven)" in md and "오르는 중" in md
+    assert "확인 불가" in md  # 장기채 보유에 요구되는 추가 보상(10Y Term Premium)
 
 
 def test_no_reading_message():

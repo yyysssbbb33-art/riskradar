@@ -21,9 +21,9 @@ class _Store:
 
 
 def test_plain_names_hide_finance_acronyms():
-    assert core_name("HYOAS") == "신용등급 낮은 기업의 추가금리"
-    assert aux_name("IGOAS") == "신용등급 높은 기업의 추가금리"
-    assert aux_name("TERMPREM") == "장기채 추가 보상"
+    assert core_name("HYOAS") == "신용등급이 낮은 기업의 추가 금리(HY OAS)"
+    assert aux_name("IGOAS") == "투자등급 회사채 전체 평균 추가 금리(IG OAS)"
+    assert aux_name("TERMPREM") == "장기채 보유에 요구되는 추가 보상(10Y Term Premium)"
 
 
 def test_percentile_is_explained_as_past_position_not_probability():

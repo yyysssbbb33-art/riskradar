@@ -107,22 +107,22 @@ def vol_credit_axis(frames: dict[str, pd.DataFrame], cfg: AxisCfg = AXIS) -> Vol
 
     if vix_active and hy_active:
         state, label = "D", "주식시장과 회사채가 함께 움직임"
-        note = "주식시장이 예상하는 흔들림과 저신용 기업 회사채 추가금리가 모두 평소와 다른 움직임을 보입니다."
+        note = "주식시장 예상 변동성과 저신용 기업 회사채 추가 금리가 모두 평소와 다른 움직임을 보입니다."
     elif vix_active:
         state, label = "B", "주식시장 쪽만 움직임"
-        note = "주식시장이 예상하는 흔들림은 커졌지만 저신용 기업 회사채 추가금리는 아직 평소 범위입니다. 실제 선후행을 뜻하지 않습니다."
+        note = "주식시장 예상 변동성은 커졌지만 저신용 기업 회사채 추가 금리는 아직 평소 범위입니다. 실제 선후행을 뜻하지 않습니다."
     elif hy_active:
         recent = vf["state_code"].iloc[-cfg.e_link_window:].tolist() if vf is not None else []
         had_vix = any(c in VIX_ACTIVE_STATES for c in recent)
         if had_vix:
             state, label = "E", "주식시장은 진정 · 회사채 변화는 이어짐"
-            note = "최근 주식시장 흔들림은 줄었지만 저신용 기업 회사채 추가금리는 아직 평소와 다른 움직임을 보입니다."
+            note = "최근 주식시장 변동성은 줄었지만 저신용 기업 회사채 추가 금리는 아직 평소와 다른 움직임을 보입니다."
         else:
             state, label = "C", "회사채 쪽만 움직임"
-            note = "저신용 기업 회사채 추가금리의 움직임이 주식시장 예상 흔들림보다 더 뚜렷합니다."
+            note = "저신용 기업 회사채 추가 금리의 움직임이 주식시장 예상 변동성보다 더 뚜렷합니다."
     else:
         state, label = "A", "큰 움직임 없음"
-        note = "주식시장이 예상하는 흔들림과 저신용 기업 회사채 추가금리 모두 큰 움직임이 없습니다."
+        note = "주식시장 예상 변동성과 저신용 기업 회사채 추가 금리 모두 큰 움직임이 없습니다."
 
     return VolCreditAxis(state, label, state != "A", vix_active, vreason,
                          vchange_pct, hy_active, vix_state, hy_state, note)

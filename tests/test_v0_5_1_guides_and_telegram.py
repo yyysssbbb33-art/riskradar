@@ -83,9 +83,9 @@ def test_aux_detail_connects_current_data_companions_branches_and_card():
     assert "## 지금 데이터로 보면" in md
     assert "약 1개월 변화" in md and "+0.11%p" in md
     assert "### 같이 볼 지표와 현재 결과" in md
-    assert "신용등급 낮은 기업의 추가금리" in md
-    assert "투자등급 경계 기업의 추가금리" in md
-    assert "미국 금융시장 전반의 자금 사정" in md
+    assert "신용등급이 낮은 기업의 추가 금리(HY OAS)" in md
+    assert "투자등급 경계 기업의 추가 금리(BBB OAS)" in md
+    assert "미국 금융여건(NFCI)" in md
     assert "### 결과가 달라지면" in md
     assert "### 8. 근거의 한계" in md
 
@@ -104,13 +104,13 @@ def test_external_reference_details_explain_reference_only_role():
 
 def test_relationship_guide_covers_credit_ladder_cp_and_external_references():
     text = plain_language(RELATIONSHIP_GUIDE)
-    assert "기업 부담이 어디까지 번졌나" in text
-    assert "단기 기업자금시장까지 영향을 받나" in text
-    assert "외부 종합지표는 어떻게 참고하나" in text
+    assert "기업 신용 부담은 어디에서 나타나나" in text
+    assert "단기 기업자금시장(CP)까지 변화가 나타나나" in text
+    assert "외부 참고 지표는 어떻게 참고하나" in text
     assert "투자등급 경계 기업" in text
-    assert "단기자금 금리 차이" in text
-    assert "미국 금융시장 전반의 자금 사정" in text
-    assert "미국 금융시장 전반의 불안" in text
+    assert "CP Spread" in text
+    assert "미국 금융여건(NFCI)" in text
+    assert "미국 금융시장 불안(STLFSI)" in text
 
 
 def test_telegram_shows_all_results_then_interpretation():
@@ -136,17 +136,17 @@ def test_telegram_shows_all_results_then_interpretation():
     )
 
     # 핵심 6개: 값 + 1개월/3개월 변화
-    assert "주식시장 예상 흔들림: 18.4 · +2.1포인트 / -0.4포인트" in text
-    assert "신용등급 낮은 기업의 추가금리: 3.45%p · +0.12%p / +0.28%p" in text
-    assert "30년 금리: 4.72% · +0.24%p / +0.41%p" in text
+    assert "VIX: 18.4 · +2.1포인트 / -0.4포인트" in text
+    assert "HY OAS: 3.45%p · +0.12%p / +0.28%p" in text
+    assert "30Y: 4.72% · +0.24%p / +0.41%p" in text
 
     # 확인지표 5개 + 외부 참고 2개: 값 + 1개월 변화
-    assert "10년 물가 예상: 2.36% · +0.07%p" in text
-    assert "투자등급 경계 추가금리: 1.32%p · +0.14%p" in text
-    assert "A등급 기업 추가금리: 0.84%p · +0.03%p" in text
-    assert "단기자금 금리 차이: 0.46%p · +0.11%p" in text
-    assert "금융시장 자금 사정: -0.18 · +0.12" in text
-    assert "금융시장 불안: -0.31 · -0.08" in text
+    assert "10Y Breakeven: 2.36% · +0.07%p" in text
+    assert "BBB OAS: 1.32%p · +0.14%p" in text
+    assert "A OAS: 0.84%p · +0.03%p" in text
+    assert "CP Spread: 0.46%p · +0.11%p" in text
+    assert "NFCI: -0.18 · +0.12" in text
+    assert "STLFSI: -0.31 · -0.08" in text
 
     # 결과 뒤에 영역과 조합 해석
     assert text.index("핵심 지표") < text.index("여러 지표를 같이 보면")
@@ -159,6 +159,6 @@ def test_telegram_shows_all_results_then_interpretation():
 def test_plain_language_does_not_mangle_new_user_terms():
     text = plain_language(get_aux_interpretation_card("BBBOAS") + get_aux_interpretation_card("CPSPREAD"))
     assert "투자등급 경계 기업" in text
-    assert "기업 신용도에 따른 단기자금 금리 차이" in text
+    assert "CP Spread" in text
     assert "신용등급 높은 기업의 회사채 경계 기업" not in text
     assert "기업이 돈을 갚을 능력도" not in text

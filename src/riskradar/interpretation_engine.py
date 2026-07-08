@@ -163,15 +163,15 @@ def _build_reading(combo: CR.Combo, ctx: ReadingContext) -> ComboReading:
     conflict = ""
     if len(supported_ids) >= 2:
         conflict = (
-            "확인지표가 서로 다른 설명을 동시에 지지합니다. 복수 요인이 함께 작용하는 국면일 수 있어 "
+            "함께 볼 지표가 서로 다른 설명을 동시에 지지합니다. 복수 요인이 함께 작용하는 국면일 수 있어 "
             "하나의 원인으로 정리하기 어렵습니다."
         )
 
     uncertainty = combo.uncertainty
     if any(c.direction == CR.NA for c in checks):
-        uncertainty += " 일부 확인지표가 판정불가 또는 오래된 상태라 해당 확인은 보류했습니다."
+        uncertainty += " 일부 함께 볼 지표가 확인 불가 또는 오래된 상태라 해당 확인은 보류했습니다."
     if not supported_ids:
-        uncertainty += " 현재 확인지표만으로 상대적으로 우세한 설명을 고르기 어렵습니다."
+        uncertainty += " 현재 함께 볼 지표만으로 상대적으로 우세한 설명을 고르기 어렵습니다."
 
     return ComboReading(
         combo_id=combo.combo_id,

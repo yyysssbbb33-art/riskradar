@@ -3,8 +3,8 @@
 원칙
 - 숫자 결과를 먼저, 해석을 뒤에 보여준다.
 - 단일 위험점수·매매 조언·인과/선행 과장 표현을 만들지 않는다.
-- 핵심 6개 → HY-BBB 렌즈 → 확인지표 → 외부 참고 → 범위·지속 해석 순서다.
-- Telegram 실패는 데이터 갱신 성공을 깨지 않는다.
+- 핵심 6개 → HY-BBB 해석 기준 → 함께 볼 지표 → 외부 참고 → 범위·지속 해석 순서다.
+- Telegram 실패는 데이터 데이터 업데이트 성공을 깨지 않는다.
 """
 from __future__ import annotations
 
@@ -33,21 +33,21 @@ _DIRECTION_TEXT = {
     "상승": "오르는 중",
     "하락": "내리는 중",
     "보합": "뚜렷한 변화 없음",
-    "판정불가": "확인 불가",
+    "확인 불가": "확인 불가",
 }
 _AUX_SHORT_NAMES = {
-    "BREAKEVEN": "10년 물가 예상",
-    "TERMPREM": "장기채 추가 보상",
-    "BBBOAS": "투자등급 경계 추가금리",
-    "AOAS": "A등급 기업 추가금리",
-    "CPSPREAD": "단기자금 금리 차이",
-    "NFCI": "금융시장 자금 사정",
-    "STLFSI": "금융시장 불안",
+    "BREAKEVEN": "10Y Breakeven",
+    "TERMPREM": "10Y Term Premium",
+    "BBBOAS": "BBB OAS",
+    "AOAS": "A OAS",
+    "CPSPREAD": "CP Spread",
+    "NFCI": "NFCI",
+    "STLFSI": "STLFSI",
 }
 _NODE_SHORT_NAMES = {
-    "HY": "저신용 회사채",
-    "BBB": "투자등급 경계",
-    "A": "A등급 회사채",
+    "HY": "HY OAS",
+    "BBB": "BBB OAS",
+    "A": "A OAS",
     "CP": "단기 기업자금",
 }
 
@@ -153,12 +153,12 @@ def _reference_level(aux_df: pd.DataFrame | None, key: str) -> str:
         return "확인 불가"
     pct = row.get("level_pct")
     if pct is None or pd.isna(pct):
-        return _DIRECTION_TEXT.get(str(row.get("direction", "판정불가")), "확인 불가")
+        return _DIRECTION_TEXT.get(str(row.get("direction", "확인 불가")), "확인 불가")
     pct = float(pct)
     if 40.0 <= pct <= 60.0:
         return "평소 범위"
     if key == "NFCI":
-        return "평소보다 빡빡한 쪽" if pct > 60 else "평소보다 느슨한 쪽"
+        return "평소보다 어려워지는 쪽" if pct > 60 else "평소보다 느슨한 쪽"
     return "평소보다 불안이 높은 쪽" if pct > 60 else "평소보다 불안이 낮은 쪽"
 
 
@@ -182,7 +182,7 @@ def _aux_result_lines(aux_df: pd.DataFrame | None, keys: list[str], title: str,
             continue
         value = fmt_value(r.get("latest_value"), str(r.get("value_unit", "")))
         change = fmt_change(r.get("change_1m"), str(r.get("change_unit", "")))
-        direction = _DIRECTION_TEXT.get(str(r.get("direction", "판정불가")), "확인 불가")
+        direction = _DIRECTION_TEXT.get(str(r.get("direction", "확인 불가")), "확인 불가")
         if external:
             direction = f"{_reference_level(aux_df, key)} · {direction}"
         stale = " · 오래된 자료" if str(r.get("staleness_label", "normal")) == "stale" else ""
@@ -233,21 +233,21 @@ def _reading_lines(readings: list[dict] | None) -> list[str]:
         elif reading.get("conflict"):
             interpretation = "서로 다른 설명을 가리키는 부분이 있음: " + plain_language(str(reading.get("conflict")))
         else:
-            interpretation = plain_language(str(reading.get("uncertainty") or "확인지표만으로 한 설명이 뚜렷하게 앞서지 않음"))
+            interpretation = plain_language(str(reading.get("uncertainty") or "함께 볼 지표만으로 한 설명이 뚜렷하게 앞서지 않음"))
         lines.append(f"• {label}: {_shorten(interpretation)}")
     return lines
 
 
 def _credit_episode_lines(credit_episode: dict | None) -> list[str]:
     if not credit_episode:
-        return ["", "기업 신용 범위와 지속", "• 현재 범위·지속 결과를 확인할 수 없음"]
+        return ["", "기업 신용 범위와 지속", "• 현재 변화가 나타난 곳·지속 결과를 확인할 수 없음"]
     current = credit_episode.get("current") or {}
     episode = current.get("episode") or {}
     nodes = current.get("nodes") or {}
     lens = credit_episode.get("lens") or {}
     vix = credit_episode.get("vix_context") or {}
     lines = ["", "기업 신용 범위와 지속"]
-    lines.append(f"• 에피소드: {episode.get('state_label', '확인 불가')}")
+    lines.append(f"• 변화 흐름: {episode.get('state_label', '확인 불가')}")
     lines.append(f"• 범위: {current.get('scope_text', '확인 불가')}")
     states = []
     for node in ("HY", "BBB", "A", "CP"):
@@ -266,7 +266,7 @@ def _credit_episode_lines(credit_episode: dict | None) -> list[str]:
     prior = episode.get("prior_residual_nodes") or []
     if prior:
         names = ", ".join(_NODE_SHORT_NAMES.get(x, x) for x in prior)
-        lines.append(f"• 이전 에피소드 잔존 변화: {names}")
+        lines.append(f"• 이전 변화 흐름 계속되는 변화: {names}")
     return lines
 
 
@@ -336,4 +336,4 @@ def build_partial(cache_version: str, matrix: pd.DataFrame, synced: dict,
 
 
 def build_failure(step: str, error: str) -> str:
-    return f"❌ RiskRadar 갱신 실패\n\n단계: {step}\n오류: {_shorten(error, 500)}"
+    return f"❌ RiskRadar 데이터 업데이트 실패\n\n단계: {step}\n오류: {_shorten(error, 500)}"

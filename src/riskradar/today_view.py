@@ -13,6 +13,7 @@ _DIR_MARK = {
     "상승": "▲ 오르는 중",
     "하락": "▼ 내리는 중",
     "보합": "· 뚜렷한 변화 없음",
+    "확인 불가": "— 확인 불가",
     "판정불가": "— 확인 불가",
 }
 _FRESHNESS = {
@@ -45,29 +46,29 @@ _RATE_RESULTS = {
 
 def _fmt_change(row) -> str:
     direction = row.get("direction", "")
-    if direction in ("보합", "판정불가") or row.get("change_1m") is None or pd.isna(row.get("change_1m")):
+    if direction in ("보합", "확인 불가") or row.get("change_1m") is None or pd.isna(row.get("change_1m")):
         return _DIR_MARK.get(direction, direction)
     return f"{_DIR_MARK.get(direction, direction)} ({fmt_change_value(row.get('change_1m'), row.get('change_unit', ''))})"
 
 
 _AUX_GROUPS = [
     ("장기금리가 왜 움직이나", ("BREAKEVEN", "TERMPREM")),
-    ("기업 부담이 어디까지 번졌나", ("BBBOAS", "AOAS")),
+    ("기업 신용 부담이 어디에서 나타나나", ("BBBOAS", "AOAS")),
     ("단기 자금시장도 영향을 받고 있나", ("CPSPREAD",)),
-    ("외부 종합 참고", ("NFCI", "STLFSI")),
+    ("외부 참고 지표", ("NFCI", "STLFSI")),
 ]
 
 
 def _reference_level_text(key: str, row) -> str:
-    """외부 종합 참고지표의 현재 수준을 자기 역사에서 쉬운 말로 표시."""
+    """외부 참고 지표지표의 현재 수준을 자기 역사에서 쉬운 말로 표시."""
     pct = row.get("level_pct")
     if pct is None or pd.isna(pct):
         return "현재 수준 비교 불가"
     pct = float(pct)
     if 40.0 <= pct <= 60.0:
-        return "평소 범위"
+        return "평소 변화가 나타난 곳"
     if key == "NFCI":
-        return "평소보다 자금 사정이 빡빡한 쪽" if pct > 60.0 else "평소보다 자금 사정이 느슨한 쪽"
+        return "평소보다 자금 사정이 어려워지는 쪽" if pct > 60.0 else "평소보다 자금 사정이 느슨한 쪽"
     if key == "STLFSI":
         return "평소보다 시장 불안이 높은 쪽" if pct > 60.0 else "평소보다 시장 불안이 낮은 쪽"
     return "평소보다 높은 쪽" if pct > 60.0 else "평소보다 낮은 쪽"
@@ -120,7 +121,7 @@ def _aux_section(aux_df: pd.DataFrame) -> str:
 
     lines = [
         "### 원인을 구분할 때 같이 보는 지표",
-        "확인 지표는 원인·범위·다른 자금시장을 확인하고, 외부 참고는 공식 종합지표가 같은 그림인지 마지막에 봅니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
+        "함께 볼 지표는 원인, 회사채 부담이 나타나는 곳, 단기 자금시장 변화를 구분할 때 씁니다. 외부 참고 지표는 공식 종합 지표가 같은 방향인지 마지막에 확인합니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
         "",
     ]
     old_name_to_key = {
@@ -140,10 +141,10 @@ def _aux_section(aux_df: pd.DataFrame) -> str:
         if not present:
             continue
         lines += [f"#### {title}"]
-        if title == "기업 부담이 어디까지 번졌나":
-            lines.append("핵심지표인 신용등급 낮은 기업의 추가금리와 함께 봅니다.")
-        elif title == "외부 종합 참고":
-            lines.append("아래 지표는 RiskRadar 해석 엔진에 넣지 않고, 공식 기관의 종합지표가 같은 방향을 가리키는지만 참고합니다.")
+        if title == "기업 신용 부담이 어디에서 나타나나":
+            lines.append("핵심 지표인 신용등급이 낮은 기업의 추가 금리(HY OAS)와 함께 봅니다.")
+        elif title == "외부 참고 지표":
+            lines.append("아래 지표는 RiskRadar 해석 엔진에 넣지 않고, 공식 기관의 종합 지표가 같은 방향을 가리키는지만 참고합니다.")
         for key in present:
             lines.extend(_aux_row_lines(by_key[key], key))
         lines.append("")
@@ -159,21 +160,21 @@ def _credit_episode_section(dq: dict) -> str:
     vix = credit.get("vix_context") or {}
     state = str(episode.get("state", "none"))
     if not current:
-        return "### 기업 신용 범위와 지속\n현재 캐시에는 범위·지속 엔진 결과가 없습니다."
+        return "### 기업 신용 변화 흐름\n현재 캐시에는 변화가 나타난 곳·지속 엔진 결과가 없습니다."
 
     lines = [
-        "### 기업 신용 범위와 지속",
-        "이 부분은 누가 먼저였는지 추정하지 않고, **어느 실제 시장이 참여하고 무엇이 아직 남아 있는지**를 봅니다.",
+        "### 기업 신용 변화 흐름",
+        "이 부분은 누가 먼저였는지 추정하지 않고, **어느 시장에서 변화가 나타나고 무엇이 계속 이어지는지**를 봅니다.",
         "",
-        f"- **에피소드 상태:** {episode.get('state_label', '현재 에피소드 없음')}",
-        f"- **현재 범위:** {current.get('scope_text', '확인 불가')}",
+        f"- **변화 흐름 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}",
+        f"- **현재 변화가 나타난 곳:** {current.get('scope_text', '확인 불가')}",
     ]
     if episode.get("started_at"):
-        lines.append(f"- **현재 에피소드 시작:** {episode.get('started_at')} · 마지막 의미 있는 변화 {episode.get('last_meaningful_activity_at') or '확인 불가'}")
+        lines.append(f"- **현재 변화 흐름 시작:** {episode.get('started_at')} · 마지막 의미 있는 변화 {episode.get('last_meaningful_activity_at') or '확인 불가'}")
     if state == "dormant":
-        lines.append("- **휴면 의미:** 새 변화는 한동안 없지만 이전 변화의 잔존이 남아 있습니다. 새 시장이 움직이면 새 에피소드로 분리합니다.")
+        lines.append("- **한동안 새 변화 없음의 의미:** 한동안 새 변화는 없지만 이전 변화가 완전히 사라졌다는 뜻은 아닙니다. 다른 시장에서 새 변화가 나타나면 별도의 변화 흐름으로 구분합니다.")
     if episode.get("prior_residual_nodes"):
-        lines.append("- **이전 잔존:** 이전 휴면 에피소드의 잔존 변화 위에서 새 변화가 시작됐습니다.")
+        lines.append("- **이전 변화의 영향:** 이전 변화가 완전히 사라지기 전에 새 변화가 시작됐습니다.")
 
     lines += ["", "#### 실제 시장별 현재 상태"]
     for key in ("HY", "BBB", "A", "CP"):
@@ -191,7 +192,7 @@ def _credit_episode_section(dq: dict) -> str:
 
     lines += [
         "",
-        "#### 등급 간 차별 렌즈",
+        "#### 저신용 기업 쪽 상대 부담 해석 기준",
         f"- {lens.get('label', '확인 불가')}",
     ]
     if lens.get("latest_value_bp") is not None:
@@ -208,14 +209,14 @@ def _credit_episode_section(dq: dict) -> str:
         ]
     lines += [
         "",
-        "> HY-BBB 차이는 별도 시장이 아니라 HY와 BBB의 상대적 차이를 보는 렌즈입니다. 범위 엔진의 참여 시장으로 두 번 세지 않습니다.",
+        "> HY-BBB 차이는 별도 시장이 아니라 HY와 BBB의 상대적 차이를 보는 해석 기준입니다. 변화가 나타난 곳 엔진의 변화 시장으로 두 번 세지 않습니다.",
     ]
     return "\n".join(lines)
 
 
 
 def render_credit_episode_markdown(data_quality: dict | None) -> str:
-    """현재 기업 신용 범위·지속 결과만 독립적으로 렌더링한다."""
+    """현재 기업 신용 변화가 나타난 곳·지속 결과만 독립적으로 렌더링한다."""
     return plain_language(_credit_episode_section(data_quality or {}))
 
 def _axes_section(axes: dict) -> str:
@@ -345,7 +346,7 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
     """오늘의 해석 탭 첫 화면용 핵심 요약.
 
     전체 확인 근거와 결과별 대안은 기존 ``render_today_markdown``에 남겨 두고,
-    첫 화면에는 현재 범위·움직이는 영역·주요 조합만 압축해서 보여준다.
+    첫 화면에는 현재 변화가 나타난 곳·움직이는 영역·주요 조합만 압축해서 보여준다.
     """
     dq = dq or {}
     lines = [
@@ -362,12 +363,12 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
         lines += [
             "",
             "## 기업 신용",
-            f"- **에피소드:** {episode.get('state_label', '현재 에피소드 없음')}",
-            f"- **범위:** {current.get('scope_text', '확인 불가')}",
+            f"- **변화 흐름:** {episode.get('state_label', '현재 변화 흐름 없음')}",
+            f"- **변화가 나타난 곳:** {current.get('scope_text', '확인 불가')}",
         ]
         lens_label = str(lens.get("label") or "")
         if lens_label and lens_label != "확인 불가":
-            lines.append(f"- **등급 간 차별:** {lens_label}")
+            lines.append(f"- **저신용 기업 쪽 상대 부담:** {lens_label}")
 
     axes = dq.get("axes") or {}
     if axes:
@@ -403,7 +404,7 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
 
     lines += [
         "",
-        "> 전체 근거, 확인지표 결과, 결과가 달라질 때의 해석은 아래 아코디언에서 볼 수 있습니다.",
+        "> 전체 근거, 함께 볼 지표 결과, 결과가 달라질 때의 해석은 아래 아코디언에서 볼 수 있습니다.",
     ]
     return "\n".join(lines)
 

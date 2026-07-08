@@ -1,7 +1,7 @@
 """refresh 오케스트레이션 (GitHub Actions 또는 CLI가 호출).
 
 반환 status: success | partial_success | failed
-Telegram 실패는 데이터 갱신 성공을 깨지 않는다.
+Telegram 실패는 데이터 데이터 업데이트 성공을 깨지 않는다.
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _raw_long(raw_by_key: dict[str, pd.DataFrame], fetched_at: str,
 
 
 def _aux_raw_long(raw_frames: dict[str, pd.DataFrame], fetched_at: str) -> pd.DataFrame:
-    """확인지표 원자료를 장기 포맷으로 저장한다. 에피소드 재구성과 진단용."""
+    """함께 볼 지표 원자료를 장기 포맷으로 저장한다. 변화 흐름 재구성과 진단용."""
     parts = []
     for key, df in raw_frames.items():
         if key not in AC.AUX_SERIES or df is None or df.empty:
@@ -150,7 +150,7 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                 bundle = aux_indicators.collect_aux_bundle()
                 aux = bundle.directions
                 aux_raw_frames = bundle.raw_frames
-        except Exception as e:  # noqa: BLE001 - 확인지표는 전체를 깨지 않음
+        except Exception as e:  # noqa: BLE001 - 함께 볼 지표는 전체를 깨지 않음
             log.warning("aux collect failed: %s", e)
             aux = {}
         aux_matrix = _aux_matrix(aux, now)
@@ -237,7 +237,7 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
             previous_finder = getattr(store, "find_previous_decision_snapshot", None)
             previous_decision = previous_finder(cache_version) if previous_finder is not None else None
             decision_diff = DS.compare_decision_snapshots(previous_decision, decision_snap)
-        except Exception as e:  # noqa: BLE001 - 판정 기록 실패가 핵심 데이터 갱신을 막지 않음
+        except Exception as e:  # noqa: BLE001 - 판정 기록 실패가 핵심 데이터 데이터 업데이트을 막지 않음
             decision_tracking_error = f"{type(e).__name__}: {e}"
             log.warning("decision snapshot/diff failed: %s", e)
 
@@ -337,7 +337,7 @@ def run_refresh(fetcher: Callable[[], dict] | None = None,
                    ))
             sent = tg.send(msg)
             status["telegram_sent"] = sent
-            # parquet 전체를 다시 올리지 않는다. 상태 갱신 실패도 데이터 성공을 깨지 않는다.
+            # parquet 전체를 다시 올리지 않는다. 상태 데이터 업데이트 실패도 데이터 성공을 깨지 않는다.
             updater = getattr(store, "update_status", None)
             if updater is not None:
                 try:

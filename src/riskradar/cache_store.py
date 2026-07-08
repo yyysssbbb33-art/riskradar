@@ -3,7 +3,7 @@
 쓰기(refresh, GitHub Actions에서):
   1) versions/<cache_version>/ 에 산출물 업로드
   2) 검증
-  3) data_status.json(포인터) 마지막에 갱신
+  3) data_status.json(포인터) 마지막에 데이터 업데이트
 읽기(HF Space UI에서):
   data_status.json -> active_cache_version -> 해당 버전 산출물 로드
 
@@ -177,7 +177,7 @@ class LocalStore:
         self._prune()
 
     def update_status(self, cache_version: str, status: dict) -> None:
-        """산출물은 건드리지 않고 status와 활성 포인터만 갱신한다."""
+        """산출물은 건드리지 않고 status와 활성 포인터만 데이터 업데이트한다."""
         vdir = self.root / "versions" / cache_version
         (vdir / "status.json").write_text(
             json.dumps(status, ensure_ascii=False, indent=2))
@@ -270,7 +270,7 @@ class LocalStore:
         return None
 
     def find_last_good_aux_raw(self, key: str) -> pd.DataFrame | None:
-        """최신→과거 버전에서 해당 확인지표의 마지막 저장 원자료를 찾는다."""
+        """최신→과거 버전에서 해당 함께 볼 지표의 마지막 저장 원자료를 찾는다."""
         for version in reversed(self.list_versions()):
             try:
                 df = self.load_artifact(version, "aux_raw")
@@ -337,14 +337,14 @@ class HfDatasetStore:
         self._prune()
 
     def update_status(self, cache_version: str, status: dict) -> None:
-        """Telegram 결과처럼 작은 상태 변화만 갱신한다. parquet은 재업로드하지 않는다."""
+        """Telegram 결과처럼 작은 상태 변화만 데이터 업데이트한다. parquet은 재업로드하지 않는다."""
         payload = json.dumps(status, ensure_ascii=False, indent=2).encode()
         self.api.upload_file(
             path_or_fileobj=payload,
             path_in_repo=f"versions/{cache_version}/status.json",
             repo_id=self.repo_id, repo_type="dataset",
             commit_message=f"status {cache_version}")
-        # 활성 포인터는 마지막에 갱신한다.
+        # 활성 포인터는 마지막에 데이터 업데이트한다.
         self.api.upload_file(
             path_or_fileobj=payload, path_in_repo="data_status.json",
             repo_id=self.repo_id, repo_type="dataset",
@@ -486,7 +486,7 @@ class HfDatasetStore:
         return None
 
     def find_last_good_aux_raw(self, key: str) -> pd.DataFrame | None:
-        """최신→과거 버전에서 해당 확인지표의 마지막 저장 원자료를 찾는다."""
+        """최신→과거 버전에서 해당 함께 볼 지표의 마지막 저장 원자료를 찾는다."""
         for version in reversed(self.list_versions()):
             try:
                 df = self.load_artifact(version, "aux_raw")

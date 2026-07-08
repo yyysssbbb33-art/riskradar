@@ -1,7 +1,7 @@
 """지난 30일의 '과정'을 읽는 요약.
 
 시작값과 현재값만 비교하지 않는다. 기간 중 크게 움직였다가 되돌아온 경우,
-아직 남아 있는 변화, 새 변화가 처음 잡힌 순서, 2년·30년 금리의 방향을 함께 본다.
+계속 이어지는 변화, 새 변화가 처음 잡힌 순서, 2년·30년 금리의 방향을 함께 본다.
 원인관계나 위험점수는 만들지 않는다.
 """
 from __future__ import annotations
@@ -207,12 +207,12 @@ def _aux_direction_text(aux_df: pd.DataFrame | None, key: str) -> str:
         return "확인 불가"
     if str(row.get("staleness_label", "")) == "stale":
         return "자료가 오래돼 현재 해석에서 제외"
-    direction = str(row.get("direction", "판정불가"))
+    direction = str(row.get("direction", "확인 불가"))
     return {
         "상승": "오르는 중",
         "하락": "내리는 중",
         "보합": "뚜렷한 움직임 없음",
-        "판정불가": "확인 불가",
+        "확인 불가": "확인 불가",
     }.get(direction, direction)
 
 
@@ -239,7 +239,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     lines = [
         "## 지난 30일 흐름",
         "",
-        "시작값과 현재값만 비교하지 않고, **기간 중 크게 움직였다가 되돌아온 변화·아직 남아 있는 변화·처음 확인된 날짜**를 함께 봅니다.",
+        "시작값과 현재값만 비교하지 않고, **기간 중 크게 움직였다가 되돌아온 변화·계속 이어지는 변화·처음 확인된 날짜**를 함께 봅니다.",
         "",
         "> 이 요약은 원인이나 위험을 확정하지 않습니다. 지난 한 달 동안 데이터에서 실제로 나타난 경로를 정리합니다.",
     ]
@@ -272,7 +272,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
 
     # 3) 남은 변화
     remaining = [st for st in ranked if st.remaining]
-    lines += ["", "### 아직 남아 있는 변화"]
+    lines += ["", "### 계속 이어지는 변화"]
     if remaining:
         for st in remaining[:4]:
             direction = "높은" if st.net > 0 else "낮은"
@@ -281,7 +281,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
                 f"({_net_text(st.key, st.net)})."
             )
     else:
-        lines.append("- 기간 시작과 비교해 크게 남아 있는 변화는 뚜렷하지 않습니다.")
+        lines.append("- 기간 시작과 비교해 크게 계속 이어지는 변화는 뚜렷하지 않습니다.")
 
     # 4) 새 변화가 처음 확인된 날짜. 실제 선행/후행 엔진이 아니다.
     events = _first_new_changes(history)
@@ -304,7 +304,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     elif d2 == "상승" and d30 == "상승":
         lines.append("- **2년·30년 금리가 함께 올랐습니다.** 단기와 장기 금리에 공통으로 작용한 요인이 있는지 확인합니다.")
     elif d2 == "하락" and d30 == "하락":
-        lines.append("- **2년·30년 금리가 함께 내렸습니다.** 물가 부담 완화인지 경기 둔화 우려인지 회사채 추가금리와 고용 흐름으로 구분합니다.")
+        lines.append("- **2년·30년 금리가 함께 내렸습니다.** 물가 부담 완화인지 경기 둔화 우려인지 회사채 추가 금리와 고용 흐름으로 구분합니다.")
     else:
         lines.append(f"- 2년 금리: **{d2}**, 30년 금리: **{d30}**. 한 달 전체에서 뚜렷한 공통 방향은 제한적입니다.")
 
@@ -315,8 +315,8 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     nodes = current.get("nodes") or {}
     if current:
         lines += ["", "### 기업 신용 범위와 지속"]
-        lines.append(f"- **에피소드 상태:** {episode.get('state_label', '현재 에피소드 없음')}")
-        lines.append(f"- **현재 범위:** {current.get('scope_text', '확인 불가')}")
+        lines.append(f"- **변화 흐름 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}")
+        lines.append(f"- **현재 변화가 나타난 곳:** {current.get('scope_text', '확인 불가')}")
         for key in ("HY", "BBB", "A", "CP"):
             row = nodes.get(key) or {}
             if row.get("available"):
@@ -340,9 +340,9 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
                     lines.append("- **최근 30일 상태 전환:**")
                     for dt, node, label in sorted(transitions)[-6:]:
                         lines.append(f"  - {dt.date().isoformat()} · {node}: {label}")
-        lines.append("> 이 부분은 현재 범위와 지속을 보여주며, 어느 시장이 원인인지나 실제 선후행을 주장하지 않습니다.")
+        lines.append("> 이 부분은 현재 변화가 나타난 곳와 지속을 보여주며, 어느 시장이 원인인지나 실제 선후행을 주장하지 않습니다.")
 
-    # 7) 다음 확인
+    # 7) 다음에 볼 것
     lines += ["", "### 지금부터 확인할 것"]
     added = 0
     vix = stats.get("VIX")
@@ -350,8 +350,8 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     if vix and vix.reverted and hy and hy.net > MATERIAL_MOVE["HYOAS"] * 0.40:
         aoas = _aux_direction_text(aux_df, "AOAS")
         lines.append(
-            f"- 주식시장 흔들림은 되돌아왔지만 신용등급 낮은 기업의 추가금리는 기간 시작보다 높습니다. "
-            f"현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. 이 지표도 오르면 기업 자금 부담이 더 넓게 퍼지는 설명이 강해지고, "
+            f"- 주식시장 변동성은 되돌아왔지만 신용등급 낮은 기업의 추가 금리는 기간 시작보다 높습니다. "
+            f"현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. 이 지표도 오르면 기업 자금 부담이 더 넓게 이어지는 설명이 강해지고, "
             "뚜렷한 움직임이 없거나 내리면 낮은 등급 기업 쪽에 더 집중된 변화라는 설명과 잘 맞습니다."
         )
         added += 1
@@ -369,12 +369,12 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     if hy and hy.net > MATERIAL_MOVE["HYOAS"] * 0.40 and not (vix and vix.reverted):
         aoas = _aux_direction_text(aux_df, "AOAS")
         lines.append(
-            f"- 신용등급 낮은 기업의 추가금리가 한 달 동안 높아졌습니다. 현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. "
-            "이 지표도 오르면 기업 자금 부담이 넓게 퍼지는 설명을, 그렇지 않으면 낮은 등급 기업 쪽에 집중된 설명을 더 확인합니다."
+            f"- 신용등급 낮은 기업의 추가 금리가 한 달 동안 높아졌습니다. 현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. "
+            "이 지표도 오르면 기업 자금 부담이 넓게 이어지는 설명을, 그렇지 않으면 낮은 등급 기업 쪽에 집중된 설명을 더 확인합니다."
         )
         added += 1
 
     if added == 0:
-        lines.append("- 현재 한 달 경로만으로 특정 확인지표 하나를 우선해야 할 정도의 조합은 뚜렷하지 않습니다. 오늘의 해석과 각 지표 상세 설명을 함께 봅니다.")
+        lines.append("- 현재 한 달 경로만으로 특정 함께 볼 지표 하나를 우선해야 할 정도의 조합은 뚜렷하지 않습니다. 오늘의 해석과 각 지표 상세 설명을 함께 봅니다.")
 
     return plain_language("\n".join(lines))

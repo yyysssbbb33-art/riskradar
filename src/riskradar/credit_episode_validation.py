@@ -39,7 +39,7 @@ def threshold_sensitivity(node_frames: dict[str, pd.DataFrame],
                           vix_frame: pd.DataFrame | None = None,
                           cfg: CreditEpisodeCfg = CreditEpisodeCfg(),
                           deltas: tuple[float, ...] = (-3.0, 0.0, 3.0)) -> pd.DataFrame:
-    """후보 백분위를 흔들었을 때 에피소드 참여 집합이 얼마나 유지되는지 본다."""
+    """후보 백분위를 흔들었을 때 변화 흐름 변화 집합이 얼마나 유지되는지 본다."""
     runs: dict[float, object] = {}
     for delta in deltas:
         c = replace(cfg, candidate_pct=max(0.0, min(100.0, cfg.candidate_pct + delta)))
@@ -67,9 +67,9 @@ def threshold_sensitivity(node_frames: dict[str, pd.DataFrame],
 
 def calm_window_false_positive_rate(node_history: pd.DataFrame,
                                     start: str, end: str) -> dict:
-    """지정 평온 구간에서 공식 참여 상태가 켜진 관측일 비율을 계산한다.
+    """지정 평온 구간에서 뚜렷한 변화 상태가 켜진 관측일 비율을 계산한다.
 
-    ``early_change``는 관찰 단계라 공식 참여 오탐으로 세지 않는다.
+    ``early_change``는 관찰 단계라 뚜렷한 변화 오탐으로 세지 않는다.
     """
     if node_history is None or node_history.empty:
         return {"observations": 0, "official_active_observations": 0, "false_positive_rate": None}

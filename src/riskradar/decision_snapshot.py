@@ -167,7 +167,7 @@ def build_decision_snapshot(
             aux[key] = {
                 "observed_date": None,
                 "source_status": "unavailable",
-                "direction": "판정불가",
+                "direction": "확인 불가",
                 "latest_value": None,
                 "value_unit": AC.AUX_SERIES[key].value_unit,
                 "fetch_status": "missing",
@@ -177,7 +177,7 @@ def build_decision_snapshot(
         aux[key] = {
             "observed_date": _iso_date(row.get("latest_date")),
             "source_status": _source_status_from_aux(row),
-            "direction": _text(row.get("direction"), "판정불가"),
+            "direction": _text(row.get("direction"), "확인 불가"),
             "latest_value": _number(row.get("latest_value")),
             "value_unit": _text(row.get("value_unit"), AC.AUX_SERIES[key].value_unit),
             "fetch_status": _text(row.get("fetch_status"), "failed"),
@@ -336,7 +336,7 @@ def _compare_source_statuses(previous: dict, current: dict, section: str, result
         ps, cs = str(p.get("source_status")), str(c.get("source_status"))
         if ps == cs:
             continue
-        label = "핵심 지표" if section == "core" else "확인지표"
+        label = "핵심 지표" if section == "core" else "함께 볼 지표"
         result["data_quality_transitions"].append(_event(
             category="data_quality",
             transition_type="data_quality_transition",
@@ -353,7 +353,7 @@ def _compare_source_statuses(previous: dict, current: dict, section: str, result
 def _decision_display(entity: dict, label_field: str, fields: tuple[str, ...]) -> str:
     label = _text(entity.get(label_field), "확인 불가")
     if "participant" in fields:
-        label += " · 참여" if bool(entity.get("participant")) else " · 미참여"
+        label += " · 변화" if bool(entity.get("participant")) else " · 뚜렷한 변화 없음"
     if "drop_flag" in fields and bool(entity.get("drop_flag")):
         label += " · 단기 하락 플래그"
     return label
@@ -569,7 +569,7 @@ def compare_decision_snapshots(previous: dict | None, current: dict) -> dict:
         if psig is None or csig is None:
             result["diagnostics"].append({
                 "kind": "field_unavailable", "section": "credit_episode", "key": "episode",
-                "message": "에피소드 비교 필드가 없어 변화로 세지 않았습니다.",
+                "message": "변화 흐름 비교 필드가 없어 변화로 세지 않았습니다.",
             })
         elif psig != csig:
             pnodes = pcredit.get("nodes") or {}
@@ -586,7 +586,7 @@ def compare_decision_snapshots(previous: dict | None, current: dict) -> dict:
                     "section": "credit_episode",
                     "key": "episode",
                     "nodes": unreliable_nodes,
-                    "message": "참여 관련 노드의 데이터 상태가 정상이 아니어서 에피소드 차이를 시장 변화로 세지 않았습니다.",
+                    "message": "변화 관련 노드의 데이터 상태가 정상이 아니어서 변화 흐름 차이를 시장 변화로 세지 않았습니다.",
                 })
             elif _credit_observation_advanced(previous, current):
                 same_episode = pep.get("episode_id") == cep.get("episode_id")
@@ -600,13 +600,13 @@ def compare_decision_snapshots(previous: dict | None, current: dict) -> dict:
                     key="episode",
                     previous={"episode_id": pep.get("episode_id"), "state": pep.get("state"), "participants": pep.get("participants")},
                     current={"episode_id": cep.get("episode_id"), "state": cep.get("state"), "participants": cep.get("participants")},
-                    message=("신용 에피소드가 관측 타임라인 경과로 상태 전환했습니다."
-                             if observation_clock else "신용 에피소드의 상태 또는 참여 범위가 바뀌었습니다."),
+                    message=("신용 변화 흐름가 관측 타임라인 경과로 상태 전환했습니다."
+                             if observation_clock else "신용 변화 흐름의 상태 또는 변화가 나타난 곳이 바뀌었습니다."),
                 ))
             else:
                 result["diagnostics"].append({
                     "kind": "same_observation_episode_drift", "section": "credit_episode", "key": "episode",
-                    "message": "새 신용 관측 없이 달라진 에피소드 판정을 시장 변화로 세지 않았습니다.",
+                    "message": "새 신용 관측 없이 달라진 변화 흐름 판정을 시장 변화로 세지 않았습니다.",
                 })
 
     if result["schema_boundaries"] and not (result["market_transitions"] or result["data_quality_transitions"] or result["recovery_gap_events"]):

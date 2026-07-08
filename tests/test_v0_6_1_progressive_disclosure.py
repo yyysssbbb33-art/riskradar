@@ -56,13 +56,13 @@ def test_non_guide_tabs_use_closed_accordions_for_help_and_reference_content():
     expected = [
         'with gr.Accordion("현재 상황 읽는 법", open=False)',
         'with gr.Accordion("용어·표현 참고하기", open=False)',
-        'with gr.Accordion("전체 근거·확인지표·다른 경우의 해석 보기", open=False)',
+        'with gr.Accordion("전체 근거·함께 볼 지표·다른 경우의 해석 보기", open=False)',
         'with gr.Accordion("지난 30일 흐름 읽는 법", open=False)',
         'with gr.Accordion("데이터 구성 방식·주의사항 보기", open=False)',
         'with gr.Accordion("같은 날짜 비교 읽는 법", open=False)',
         'with gr.Accordion("전체 지표 비교 읽는 법", open=False)',
         'with gr.Accordion("차트 읽는 법", open=False)',
-        'with gr.Accordion("확인지표 수집 상세 보기", open=False)',
+        'with gr.Accordion("함께 볼 지표 수집 상세 보기", open=False)',
     ]
     for phrase in expected:
         assert phrase in text

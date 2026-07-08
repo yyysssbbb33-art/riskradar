@@ -42,10 +42,10 @@ def test_core_cards_default_change_filter_hides_quiet_items_but_all_view_keeps_t
     changed = render_core_cards_html(_matrix(), _chart(), changes_only=True)
     all_cards = render_core_cards_html(_matrix(), _chart(), changes_only=False)
 
-    assert "신용등급 낮은 기업의 추가금리" in changed
-    assert "주식시장이 예상하는 흔들림" not in changed
+    assert "신용등급이 낮은 기업의 추가 금리(HY OAS)" in changed
+    assert "주식시장 예상 변동성(VIX)" not in changed
     assert "나머지 1개 핵심 지표" in changed
-    assert "주식시장이 예상하는 흔들림" in all_cards
+    assert "주식시장 예상 변동성(VIX)" in all_cards
     assert "약 1개월" in all_cards and "약 3개월" in all_cards
 
 
@@ -54,7 +54,7 @@ def test_recent_change_renderer_uses_user_names_and_keeps_data_issues_separate()
         "status": "ok",
         "market_transitions": [{
             "section": "credit_nodes", "key": "BBB", "transition_type": "new_observation_transition",
-            "previous": "평소 상태 · 미참여", "current": "새로 상승 · 참여",
+            "previous": "평소 상태 · 뚜렷한 변화 없음", "current": "상승 확인 · 변화 나타남",
         }],
         "data_quality_transitions": [{"section": "aux", "key": "AOAS"}],
         "recovery_gap_events": [],
@@ -62,7 +62,7 @@ def test_recent_change_renderer_uses_user_names_and_keeps_data_issues_separate()
     }
     text = render_recent_changes_markdown(diff)
     assert "투자등급 경계 기업" in text
-    assert "시장 판정 변화" in text
+    assert "시장에서 새로 보이는 변화" in text
     assert "데이터 확인 필요" in text
     assert "A등급 기업" in text
     assert "credit_nodes" not in text
@@ -72,11 +72,11 @@ def test_credit_range_map_is_participation_map_not_sequence_arrow():
     dq = {
         "credit_episode": {
             "current": {
-                "scope_text": "신용등급 낮은 기업과 투자등급 경계 기업이 참여",
-                "episode": {"state_label": "활성", "participants": ["HY", "BBB"]},
+                "scope_text": "신용등급 낮은 기업과 투자등급 경계 기업에서 변화가 나타남",
+                "episode": {"state_label": "변화 진행 중", "participants": ["HY", "BBB"]},
                 "nodes": {
                     "HY": {"available": True, "state": "rising_persistent", "state_label": "상승 지속"},
-                    "BBB": {"available": True, "state": "newly_rising", "state_label": "새로 상승"},
+                    "BBB": {"available": True, "state": "newly_rising", "state_label": "상승 확인"},
                     "A": {"available": True, "state": "normal", "state_label": "평소 상태"},
                     "CP": {"available": True, "state": "normal", "state_label": "평소 상태"},
                 },
@@ -86,7 +86,7 @@ def test_credit_range_map_is_participation_map_not_sequence_arrow():
     }
     html = render_credit_range_map_html(dq)
     assert "HY" in html and "BBB" in html and "A" in html and "CP" in html
-    assert html.count("참여 중") == 2
+    assert html.count("변화 나타남") == 2
     assert "→" not in html
     assert "HY−BBB" in html
 
@@ -113,8 +113,8 @@ def test_evidence_balance_limits_visible_tally_and_keeps_uncertainty():
     assert "첫 번째 지지" in text and "두 번째 지지" in text
     assert "세 번째 지지" not in text
     assert "가장 큰 반대 근거" in text
-    assert "현재 확인 부족" in text
-    assert "점수처럼 읽지 않습니다" in text
+    assert "현재 확인이 어려운 부분" in text
+    assert "점수처럼 세지 않습니다" in text
 
 
 def test_v070_has_five_top_tabs_and_embeds_data_status_above_tabs():
