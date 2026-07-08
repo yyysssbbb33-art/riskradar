@@ -22,7 +22,7 @@ CORE_SHORT_NAMES = {
     "T10Y3M": "10Y-3M",
     "DGS30": "30Y",
     "DGS2": "2Y",
-    "DFII10": "10Y Real Yield",
+    "DFII10": "실질 10Y",
 }
 
 AUX_NAMES = {
@@ -68,13 +68,52 @@ LABEL_10Y = "최근 10년 중 현재 위치"
 
 # 메인 화면 상태명은 전문용어가 아니라 '지금 실제로 무슨 일이 일어나는지'를 말한다.
 _STATE_BY_CODE = {
-    "calm": "평소 수준",
-    "neutral": "보통 수준",
-    "watch": "평소보다 높음",
-    "stress": "매우 높은 편",
-    "stable": "큰 움직임 없음",
-    "rise_watch": "오르는 중",
-    "rate_shock": "빠르게 오름",
+    "calm": "경계 신호 없음",
+    "neutral": "특이 신호 없음",
+    "watch": "경계 신호",
+    "stress": "강한 경계 신호",
+    "stable": "급격한 상승 없음",
+    "rise_watch": "상승 신호",
+    "rate_shock": "빠른 상승",
+}
+
+_KEY_STATE_BY_CODE = {
+    "VIX": {
+        "calm": "경계 신호 없음",
+        "normal": "경계 신호 없음",
+        "watch": "변동성 상승",
+        "stress": "높은 변동성",
+    },
+    "HYOAS": {
+        "calm": "특이 신호 없음",
+        "neutral": "특이 신호 없음",
+        "watch": "상승 신호",
+        "stress": "강한 상승 신호",
+    },
+    "DGS30": {
+        "stable": "급격한 상승 없음",
+        "rise_watch": "상승 신호",
+        "rate_shock": "빠른 상승",
+    },
+    "DGS2": {
+        "stable": "급격한 상승 없음",
+        "rise_watch": "상승 신호",
+        "rate_shock": "빠른 상승",
+    },
+    "DFII10": {
+        "stable": "급격한 상승 없음",
+        "rise_watch": "상승 신호",
+        "rate_shock": "빠른 상승",
+    },
+}
+
+CREDIT_STATE_LABELS = {
+    "normal": "특이 신호 없음",
+    "early_change": "상승 조짐",
+    "newly_rising": "상승 확인",
+    "rising_persistent": "높은 수준 지속",
+    "retracing": "하락 전환",
+    "normalized": "신호 해제",
 }
 
 _CYCLE_STATE_BY_CODE = {
@@ -90,6 +129,17 @@ _CYCLE_STATE_BY_CODE = {
 # 동적 해석문과 예전 캐시에 남은 전문용어를 화면 출력 직전에 순화한다.
 # 내부 키·데이터 스키마는 건드리지 않는다.
 _PLAIN_REPLACEMENTS = (
+    # 구버전 기업 신용 상태 문구
+    ("주식시장 불안은 현재 평소 수준", "주식시장 변동성에 현재 경계 신호 없음"),
+    ("평소 수준으로 돌아옴", "신호 해제"),
+    ("부담이 줄기 시작", "하락 전환"),
+    ("확인 뒤 부담이 더 커져 이전 고점을 넘어섬", "이전 고점 돌파"),
+    ("부담 상승 확인", "상승 확인"),
+    ("상승 지속으로 바뀜", "높은 수준 지속으로 바뀜"),
+    ("평소 상태", "특이 신호 없음"),
+    ("초기 변화", "상승 조짐"),
+    ("상승 지속", "높은 수준 지속"),
+    ("되돌림", "하락 전환"),
     # 상태·경로 직역 표현
     ("재정상화 확정", "장기금리가 다시 높은 상태가 이어짐"),
     ("재정상화 관찰", "장기금리가 다시 높아짐"),
@@ -146,7 +196,6 @@ _PLAIN_REPLACEMENTS = (
     ("신용시장", "회사채 시장"),
     ("신용가격", "회사채 가격"),
     ("신용 스트레스", "회사채 시장 불안"),
-    ("신용 변화", "회사채 부담 변화"),
     ("기업 신용시장", "기업 회사채 시장"),
     ("신용 고유 요인", "회사채 자체 요인"),
     ("신용 악화", "회사채 부담 악화"),
@@ -227,10 +276,12 @@ def axis_name(name: str) -> str:
 def state_name(code: str | None, fallback: str | None = None, *, drop: bool = False,
                key: str | None = None) -> str:
     if drop:
-        return "빠르게 내림"
+        return "빠른 하락"
     code_text = str(code or "")
     if key == "T10Y3M" and code_text in _CYCLE_STATE_BY_CODE:
         return _CYCLE_STATE_BY_CODE[code_text]
+    if key in _KEY_STATE_BY_CODE and code_text in _KEY_STATE_BY_CODE[key]:
+        return _KEY_STATE_BY_CODE[key][code_text]
     if code_text in _STATE_BY_CODE:
         return _STATE_BY_CODE[code_text]
     # key를 모르는 호출에서도 경기 전용 코드 자체는 안전하게 해석한다.
@@ -238,6 +289,14 @@ def state_name(code: str | None, fallback: str | None = None, *, drop: bool = Fa
         return _CYCLE_STATE_BY_CODE[code_text]
     text = fallback or str(code or "확인 불가")
     return plain_language(text)
+
+
+def credit_state_name(state: str | None, fallback: str | None = None) -> str:
+    """기업 신용 상태머신을 사용자 화면의 짧은 표현으로 바꾼다."""
+    state_text = str(state or "")
+    if state_text in CREDIT_STATE_LABELS:
+        return CREDIT_STATE_LABELS[state_text]
+    return plain_language(fallback or state_text or "확인 불가")
 
 
 def plain_language(text: str) -> str:
@@ -306,11 +365,11 @@ def plain_language(text: str) -> str:
         ("회사채 시장 함께 움직인다는 설명", "회사채 시장이 함께 움직인다는 설명"),
         ("장기채 추가 보상 확대 설명", "장기채 추가 보상이 커졌다는 설명"),
         ("추가 금리 확대", "추가 금리가 커짐"),
-        ("추가 금리 기본", "추가 금리 큰 움직임 없음"),
+        ("추가 금리 기본", "추가 금리 특이 신호 없음"),
         ("확대되는지", "커지는지"),
         ("10년-3개월 금리 차이 단기금리가 장기금리보다 더 높아지는 움직임", "3개월 금리가 10년 금리보다 더 높아짐"),
         ("단기·장기 금리 관계의 경기보다 먼저 움직이는 흐름와 같은 방향인지", "10년 금리와 3개월 금리의 흐름도 같은 방향인지"),
-        ("VIX 기본", "VIX 큰 움직임 없음"),
+        ("VIX 기본", "VIX 경계 신호 없음"),
         ("회사채 시장 불안로", "회사채 시장 불안으로"),
         ("넓은 범위의 회사채도 함께 움직이는 흐름 근거", "회사채 시장 전반이 함께 움직인다는 근거"),
         ("주식 변동성", "주식시장 변동성"),

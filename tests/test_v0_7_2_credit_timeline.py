@@ -118,7 +118,7 @@ def test_early_change_is_not_coequal_event_but_confirmed_event_keeps_candidate_d
     assert confirmed["candidate_start"] == "2026-03-01"
 
     text = render_credit_timeline_markdown(out)
-    assert "확인되기 전부터 2026-03-01에 초기 변화가 보이기 시작했습니다" in text
+    assert "상승 확인 전 조짐: 2026-03-01부터" in text
     assert "당시 상태" in text
     assert "현재 표시는" not in text
 
@@ -186,7 +186,7 @@ def test_existing_credit_detail_no_longer_exposes_estimated_onset_as_change_star
     }
     text = render_credit_episode_markdown(dq)
     assert "변화 시작 2026-03-01" not in text
-    assert "부담 상승 확인 2026-03-03" in text
+    assert "상승 확인 2026-03-03" in text
 
 
 def test_known_mechanical_replacement_artifacts_are_removed_from_source():

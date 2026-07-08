@@ -93,7 +93,7 @@ def test_early_change_is_not_counted_as_official_scope():
     # 후보가 2관측만 이어진 시점의 별도 run에서는 공식 참여 전이다.
     partial = build_credit_episode({"HY": _frame(values[:62])}, cfg=_cfg(confirm_obs=3))
     assert partial.current["nodes"]["HY"]["state"] == "early_change"
-    assert "초기 변화" in partial.current["scope_text"]
+    assert "상승 조짐" in partial.current["scope_text"]
     assert partial.current["episode"]["state"] == "none"
     assert result.current["nodes"]["HY"]["state"] in {"newly_rising", "rising_persistent", "dormant", "retracing"}
 

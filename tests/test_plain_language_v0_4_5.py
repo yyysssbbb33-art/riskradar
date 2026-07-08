@@ -70,7 +70,7 @@ def test_cycle_bucket_accepts_internal_long_inversion_label():
 
 def test_today_aux_change_uses_percentage_points_not_bp():
     row = pd.Series({"direction": "상승", "change_1m": 12.0, "change_unit": "bp"})
-    assert _fmt_change(row) == "▲ 오르는 중 (+0.12%p)"
+    assert _fmt_change(row) == "▲ 상승 (+0.12%p)"
 
 
 def test_more_professional_terms_are_simplified():

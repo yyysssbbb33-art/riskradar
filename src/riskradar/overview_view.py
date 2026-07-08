@@ -12,7 +12,7 @@ import pandas as pd
 
 from . import aux_config as AC
 from . import config as C
-from .display_text import aux_name, axis_name, core_name, plain_language, state_name
+from .display_text import aux_name, axis_name, core_name, credit_state_name, plain_language, state_name
 from .formatting import fmt_change, fmt_value
 
 
@@ -98,6 +98,45 @@ def _direction_symbol(value: Any) -> str:
     return "→"
 
 
+def _matrix_row(matrix: pd.DataFrame | None, key: str) -> pd.Series | None:
+    if matrix is None or matrix.empty or "key" not in matrix.columns:
+        return None
+    hit = matrix.loc[matrix["key"].astype(str) == key]
+    return None if hit.empty else hit.iloc[-1]
+
+
+def _aux_row(aux_df: pd.DataFrame | None, key: str) -> pd.Series | None:
+    if aux_df is None or aux_df.empty or "key" not in aux_df.columns:
+        return None
+    hit = aux_df.loc[aux_df["key"].astype(str) == key]
+    return None if hit.empty else hit.iloc[-1]
+
+
+def _credit_metric(node: str, matrix: pd.DataFrame | None,
+                   aux_df: pd.DataFrame | None) -> tuple[str, str, str]:
+    source = {
+        "HY": ("core", "HYOAS"),
+        "BBB": ("aux", "BBBOAS"),
+        "A": ("aux", "AOAS"),
+        "CP": ("aux", "CPSPREAD"),
+    }.get(node)
+    if source is None:
+        return "-", "-", "·"
+    layer, key = source
+    row = _matrix_row(matrix, key) if layer == "core" else _aux_row(aux_df, key)
+    if row is None:
+        return "-", "-", "·"
+    if layer == "core":
+        value = fmt_value(row.get("latest_value"), str(row.get("value_unit", "")))
+        change_raw = row.get("change_20obs")
+        change = fmt_change(change_raw, str(row.get("change_unit", "")))
+    else:
+        value = fmt_value(row.get("latest_value"), str(row.get("value_unit", "")))
+        change_raw = row.get("change_1m")
+        change = fmt_change(change_raw, str(row.get("change_unit", "")))
+    return value, change, _direction_symbol(change_raw)
+
+
 def render_core_cards_html(matrix: pd.DataFrame, chart_data: pd.DataFrame, *, changes_only: bool = False) -> str:
     """핵심 6개를 모바일 2×3 스캔 카드로 보여준다.
 
@@ -143,12 +182,12 @@ def render_core_cards_html(matrix: pd.DataFrame, chart_data: pd.DataFrame, *, ch
         return '<div class="rr-empty">현재 표시할 핵심 지표가 없습니다.</div>'
     tail = ""
     if changes_only and hidden_count:
-        tail = f'<div class="rr-muted">나머지 {hidden_count}개 핵심 지표는 평소 수준입니다.</div>'
+        tail = f'<div class="rr-muted">나머지 {hidden_count}개 핵심 지표에는 현재 강조할 경계 신호가 없습니다.</div>'
     return '<div class="rr-core-grid">' + "".join(cards) + '</div>' + tail
 
 
 def render_domain_strip_html(data_quality: dict | None, matrix: pd.DataFrame) -> str:
-    """종합점수 없이 신용·금리·변동성 세 영역의 현재 사실만 크게 보여준다."""
+    """종합점수 없이 신용·금리·변동성의 값·상태·한달 변화를 보여준다."""
     dq = data_quality or {}
     credit = dq.get("credit_episode") or {}
     current = credit.get("current") or {}
@@ -156,50 +195,42 @@ def render_domain_strip_html(data_quality: dict | None, matrix: pd.DataFrame) ->
     participants = [str(x) for x in (episode.get("participants") or [])]
     nodes = current.get("nodes") or {}
 
-    if participants:
-        credit_main = "·".join(participants) + " 변화"
-        credit_sub = " / ".join(_text((nodes.get(x) or {}).get("state_label"), "확인") for x in participants[:2])
-    elif current:
-        early = [x for x in ("HY", "BBB", "A", "CP") if str((nodes.get(x) or {}).get("state")) == "early_change"]
-        credit_main = ("·".join(early) + " 관찰") if early else "평소"
-        credit_sub = "기업 신용"
-    else:
-        credit_main = "확인 불가"
-        credit_sub = "기업 신용"
+    hy = _matrix_row(matrix, "HYOAS")
+    rate = _matrix_row(matrix, "DGS30")
+    vix = _matrix_row(matrix, "VIX")
 
-    def hit(key: str) -> pd.Series | None:
-        if matrix is None or matrix.empty:
-            return None
-        rows = matrix.loc[matrix["key"].astype(str) == key]
-        return None if rows.empty else rows.iloc[-1]
+    hy_state_row = nodes.get("HY") or {}
+    if current and hy_state_row.get("available", True):
+        credit_state = credit_state_name(hy_state_row.get("state"), hy_state_row.get("state_label"))
+    else:
+        credit_state = "확인 불가"
 
-    rate = hit("DGS30")
-    vix = hit("VIX")
-    if rate is None:
-        rate_main, rate_sub, rate_symbol = "확인 불가", "30년 금리", "·"
-    else:
-        rate_symbol = _direction_symbol(rate.get("change_20obs"))
-        rate_main = f"30Y {rate_symbol}"
-        rate_sub = state_name(str(rate.get("state_code", "")), str(rate.get("state_label", "")), drop=bool(rate.get("drop_flag", False)), key="DGS30")
-    if vix is None:
-        vix_main, vix_sub, vix_symbol = "확인 불가", "변동성", "·"
-    else:
-        vix_symbol = _state_symbol("VIX", str(vix.get("state_code", "")), bool(vix.get("drop_flag", False)))
-        vix_main = state_name(str(vix.get("state_code", "")), str(vix.get("state_label", "")), key="VIX")
-        vix_sub = "VIX"
+    def core_card(title: str, short_name: str, row: pd.Series | None,
+                  state: str | None = None) -> tuple[str, str, str, str, str]:
+        if row is None:
+            return title, short_name, "-", "확인 불가", "· -"
+        value = fmt_value(row.get("latest_value"), str(row.get("value_unit", "")))
+        change_raw = row.get("change_20obs")
+        change = fmt_change(change_raw, str(row.get("change_unit", "")))
+        label = state or state_name(
+            str(row.get("state_code", "")), str(row.get("state_label", "")),
+            drop=bool(row.get("drop_flag", False)), key=str(row.get("key", "")),
+        )
+        return title, short_name, value, label, f"{_direction_symbol(change_raw)} {change}"
 
     cards = [
-        ("신용", credit_main, credit_sub, "●" if participants else "○"),
-        ("금리", rate_main, rate_sub, rate_symbol),
-        ("변동성", vix_main, vix_sub, vix_symbol),
+        core_card("신용", "HY", hy, credit_state),
+        core_card("금리", "30Y", rate),
+        core_card("변동성", "VIX", vix),
     ]
     return '<div class="rr-domain-strip">' + ''.join(
         '<div class="rr-domain-card">'
         f'<small>{escape(title)}</small>'
-        f'<strong><span>{escape(symbol)}</span> {escape(main)}</strong>'
-        f'<em>{escape(sub)}</em>'
+        f'<div class="rr-domain-metric"><strong>{escape(short_name)}</strong><b>{escape(value)}</b></div>'
+        f'<div class="rr-domain-state">{escape(state)}</div>'
+        f'<div class="rr-domain-change">{escape(change)} <span>1개월</span></div>'
         '</div>'
-        for title, main, sub, symbol in cards
+        for title, short_name, value, state, change in cards
     ) + '</div>'
 
 def _event_name(section: str, key: str) -> str:
@@ -362,8 +393,14 @@ def render_recent_changes_html(diff: dict | None, *, max_cards: int = 3) -> str:
     )
 
 
-def render_remaining_changes_html(decision_snapshot: dict | None, data_quality: dict | None) -> str:
-    """지속 중인 상태를 짧은 칩으로 보여준다. 날짜가 확실한 신용만 일수를 계산한다."""
+def render_remaining_changes_html(decision_snapshot: dict | None, data_quality: dict | None,
+                                  matrix: pd.DataFrame | None = None,
+                                  aux_df: pd.DataFrame | None = None) -> str:
+    """방향성이 있는 현재 추세만 보여준다.
+
+    상태명과 ``지속 중``을 겹쳐 쓰지 않는다. 정확한 시작일이 있는 신용은
+    일수를, 그 외에는 최근 약 1개월 실제 변화를 보여준다.
+    """
     snap = decision_snapshot or {}
     credit_nodes = (((snap.get("credit") or {}).get("nodes")) or {})
     core = snap.get("core") or {}
@@ -374,12 +411,15 @@ def render_remaining_changes_html(decision_snapshot: dict | None, data_quality: 
         if str(row.get("source_status", "unavailable")) != "ok":
             continue
         state = str(row.get("state", ""))
-        if state not in {"newly_rising", "rising_persistent", "retracing"} and not bool(row.get("participant", False)):
+        if state not in {"early_change", "newly_rising", "rising_persistent", "retracing"}:
             continue
-        label = _text(row.get("state_label"), "변화")
+        label = credit_state_name(state, row.get("state_label"))
         confirmed_at = row.get("confirmed_at")
-        duration = "지속 중"
-        if confirmed_at:
+        metric_value, metric_change, metric_direction = _credit_metric(node, matrix, aux_df)
+        duration = f"1개월 {metric_direction} {metric_change}" if metric_change != "-" else metric_value
+        # `N일째`는 그 상태의 시작일이 정확할 때만 쓴다. confirmed_at은
+        # 상승 확인/높은 수준 지속의 시작 기준으로만 사용하고, 하락 전환에 재사용하지 않는다.
+        if confirmed_at and state in {"newly_rising", "rising_persistent"}:
             try:
                 end_date = row.get("observed_date") or pd.Timestamp.now(tz="Asia/Seoul").date().isoformat()
                 days = max(1, (pd.Timestamp(end_date).date() - pd.Timestamp(confirmed_at).date()).days + 1)
@@ -395,16 +435,23 @@ def render_remaining_changes_html(decision_snapshot: dict | None, data_quality: 
             continue
         fake = pd.Series({"key": key, "state_code": row.get("state_code"), "drop_flag": row.get("drop_flag", False)})
         if _core_noteworthy(fake):
-            label = _text(row.get("state_label"), "변화")
-            items.append((f"{core_name(key, short=True)} {label}", "지속 중"))
+            metric = _matrix_row(matrix, key)
+            if metric is None:
+                continue
+            change_raw = metric.get("change_20obs")
+            direction_word = "상승" if _direction_symbol(change_raw) == "↑" else ("하락" if _direction_symbol(change_raw) == "↓" else "방향 없음")
+            if direction_word == "방향 없음":
+                continue
+            change_text = fmt_change(change_raw, str(metric.get("change_unit", "")))
+            items.append((f"{core_name(key, short=True)} {direction_word}", f"1개월 {change_text}"))
 
     if not items:
-        return '<section class="rr-section rr-compact-section"><div class="rr-section-title"><h2>계속 이어지는 변화</h2></div><div class="rr-quiet-line">○ 뚜렷하게 이어지는 변화가 많지 않습니다.</div></section>'
+        return '<section class="rr-section rr-compact-section"><div class="rr-section-title"><h2>현재 추세</h2></div><div class="rr-quiet-line">○ 현재 따로 강조할 상승·하락 추세가 없습니다.</div></section>'
     chips = ''.join(
         '<div class="rr-chip"><span>' + escape(label) + '</span><strong>' + escape(duration) + '</strong></div>'
         for label, duration in items[:4]
     )
-    return '<section class="rr-section rr-compact-section"><div class="rr-section-title"><h2>계속 이어지는 변화</h2></div><div class="rr-chip-row">' + chips + '</div></section>'
+    return '<section class="rr-section rr-compact-section"><div class="rr-section-title"><h2>현재 추세</h2></div><div class="rr-chip-row">' + chips + '</div></section>'
 
 
 def render_next_checks_html(data_quality: dict | None, decision_snapshot: dict | None) -> str:
@@ -455,8 +502,8 @@ def _changed_axis_text(axes: dict) -> str:
     if not changed:
         return "세 영역에서 새로 두드러지는 움직임이 크지 않습니다."
     if len(changed) == 1:
-        return f"시장 전체로는 **{changed[0]}**에서 평소와 다른 움직임이 보입니다."
-    return f"시장 전체로는 **{' · '.join(changed)}**에서 평소와 다른 움직임이 보입니다."
+        return f"시장 전체로는 **{changed[0]}**에서 경계 기준에 걸린 움직임이 보입니다."
+    return f"시장 전체로는 **{' · '.join(changed)}**에서 경계 기준에 걸린 움직임이 보입니다."
 
 
 def render_today_one_line_markdown(data_quality: dict | None) -> str:
@@ -594,7 +641,9 @@ def render_evidence_balance_markdown(data_quality: dict | None, aux_df: pd.DataF
     lines += ["", "> 근거 개수를 점수처럼 세지 않습니다. 중요한 근거와 반대로 볼 점만 보여줍니다."]
     return "\n".join(lines)
 
-def render_credit_range_map_html(data_quality: dict | None) -> str:
+def render_credit_range_map_html(data_quality: dict | None,
+                                 matrix: pd.DataFrame | None = None,
+                                 aux_df: pd.DataFrame | None = None) -> str:
     """HY·BBB·A·CP를 한눈에 보는 2×2 개인용 상태 지도."""
     credit = (data_quality or {}).get("credit_episode") or {}
     current = credit.get("current") or {}
@@ -616,21 +665,29 @@ def render_credit_range_map_html(data_quality: dict | None) -> str:
         row = nodes.get(node) or {}
         available = bool(row.get("available", False))
         state = str(row.get("state", "unavailable"))
-        label = _text(row.get("state_label"), "확인 불가") if available else "확인 불가"
+        label = credit_state_name(state, row.get("state_label")) if available else "확인 불가"
         symbol = _STATE_SYMBOLS.get(state, "○" if state in {"normal", "normalized"} else "?")
         hot = node in participants or state == "early_change"
         cls = "rr-credit-tile rr-credit-tile-hot" if hot else "rr-credit-tile rr-credit-tile-quiet"
+        value_text, change_text, direction = _credit_metric(node, matrix, aux_df)
         return (
             f'<div class="{cls}">'
             '<div class="rr-credit-tile-head">'
             f'<strong>{escape(node)}</strong><small>{escape(subtitles[node])}</small>'
             '</div>'
+            f'<div class="rr-credit-tile-value">{escape(value_text)}</div>'
             f'<div class="rr-credit-tile-state">{escape(symbol)} {escape(label)}</div>'
+            f'<div class="rr-credit-tile-change">{escape(direction)} {escape(change_text)} <span>1개월</span></div>'
             '</div>'
         )
 
-    scope = _text(current.get("scope_text"), "현재 범위를 확인할 수 없습니다.")
-    lens_label = _text(lens.get("label"), "확인 불가")
+    scope = plain_language(_text(current.get("scope_text"), "현재 범위를 확인할 수 없습니다."))
+    lens_label = plain_language(_text(lens.get("label"), "확인 불가"))
+    lens_value = lens.get("latest_value_bp")
+    lens_change = lens.get("change_1m_bp")
+    lens_value_text = "-" if lens_value is None else f"{float(lens_value) / 100.0:.2f}%p"
+    lens_change_text = "-" if lens_change is None else f"{float(lens_change) / 100.0:+.2f}%p"
+    lens_direction = _direction_symbol(lens_change)
     return (
         '<section class="rr-credit-visual">'
         '<div class="rr-section-title"><h2>기업 신용</h2></div>'
@@ -638,7 +695,11 @@ def render_credit_range_map_html(data_quality: dict | None) -> str:
         + ''.join(node_card(node) for node in ("HY", "BBB", "A", "CP")) +
         '</div>'
         f'<div class="rr-credit-scope">{escape(scope)}</div>'
-        f'<div class="rr-credit-lens-line"><span>HY−BBB</span><strong>{escape(lens_label)}</strong></div>'
+        '<div class="rr-credit-lens-line">'
+        '<div><span>HY−BBB</span><strong>' + escape(lens_value_text) + '</strong></div>'
+        '<div class="rr-credit-lens-change">' + escape(f"{lens_direction} {lens_change_text}") + ' <span>1개월</span></div>'
+        '<em>' + escape(lens_label) + '</em>'
+        '</div>'
         '</section>'
     )
 

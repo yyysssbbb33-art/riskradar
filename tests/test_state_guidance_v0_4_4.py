@@ -45,7 +45,7 @@ def test_dgs30_detail_shows_current_aux_result_and_alternative_branches():
     )
     assert "10년 일반·물가연동 국채금리 차이" in md
     assert "30년 금리 변화" in md
-    assert "현재 결과: 오르는 중" in md
+    assert "현재 결과: 상승" in md
     assert "결과가 달라지면" in md
     assert "내리면:" in md
     assert "뚜렷한 변화가 없으면:" in md

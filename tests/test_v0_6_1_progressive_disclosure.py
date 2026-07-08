@@ -19,8 +19,8 @@ def test_current_and_matrix_first_views_are_compact_but_detail_is_preserved():
         assert "지금 뜻" not in table.columns
         assert "왜 이렇게 표시됐나" not in table.columns
 
-    assert "지금 뜻" in detail.columns
-    assert "왜 이렇게 표시됐나" in detail.columns
+    assert list(first_matrix.columns) == ["지표", "현재", "최근 변화"]
+    assert list(detail.columns) == ["지표", "과거 위치", "관측일"]
 
 
 def test_today_summary_keeps_only_core_sections_and_points_to_full_detail():
@@ -56,10 +56,10 @@ def test_non_guide_tabs_keep_reference_content_behind_short_closed_accordions():
     expected = [
         'with gr.Accordion("관리·진단", open=False)',
         'with gr.Accordion("왜 이렇게 봤나", open=False)',
-        'with gr.Accordion("30년 금리 자세히", open=False)',
+        'with gr.Accordion("금리 설명·주의사항", open=False)',
         'with gr.Accordion("지난 30일 읽는 법", open=False)',
         'with gr.Accordion("데이터 설명·주의사항", open=False)',
-        'with gr.Accordion("같은 날짜 비교 읽는 법", open=False)',
+        '## 날짜별 지표 보기',
         'with gr.Accordion("표 읽는 법", open=False)',
         'with gr.Accordion("차트 읽는 법", open=False)',
         'with gr.Accordion("함께 볼 지표 수집 상태", open=False)',

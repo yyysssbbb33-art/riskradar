@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import pandas as pd
 from .display_text import (AUX_ROLES, aux_name, axis_name, core_name,
-                           plain_language, state_name)
+                           credit_state_name, plain_language, state_name)
 from .formatting import fmt_change as fmt_change_value
 
 _DIR_MARK = {
-    "상승": "▲ 오르는 중",
-    "하락": "▼ 내리는 중",
+    "상승": "▲ 상승",
+    "하락": "▼ 하락",
     "보합": "· 뚜렷한 변화 없음",
     "확인 불가": "— 확인 불가",
     "판정불가": "— 확인 불가",
@@ -66,12 +66,12 @@ def _reference_level_text(key: str, row) -> str:
         return "현재 수준 비교 불가"
     pct = float(pct)
     if 40.0 <= pct <= 60.0:
-        return "평소 범위"
+        return "중간 구간"
     if key == "NFCI":
-        return "평소보다 자금 사정이 어려워지는 쪽" if pct > 60.0 else "평소보다 자금 사정이 느슨한 쪽"
+        return "과거 기준 자금 사정이 어려운 쪽" if pct > 60.0 else "과거 기준 자금 사정이 느슨한 쪽"
     if key == "STLFSI":
-        return "평소보다 시장 불안이 높은 쪽" if pct > 60.0 else "평소보다 시장 불안이 낮은 쪽"
-    return "평소보다 높은 쪽" if pct > 60.0 else "평소보다 낮은 쪽"
+        return "과거 기준 시장 불안이 높은 쪽" if pct > 60.0 else "과거 기준 시장 불안이 낮은 쪽"
+    return "과거 기준 높은 쪽" if pct > 60.0 else "과거 기준 낮은 쪽"
 
 
 def _aux_row_lines(row, key: str | None = None) -> list[str]:
@@ -164,39 +164,44 @@ def _credit_episode_section(dq: dict) -> str:
 
     lines = [
         "### 기업 신용 변화 흐름",
-        "이 부분은 누가 먼저였는지 추정하지 않고, **어느 시장에서 변화가 나타나고 무엇이 계속 이어지는지**를 봅니다.",
+        "이 부분은 누가 먼저였는지 추정하지 않고, **어느 시장에서 변화가 나타나고 현재 무엇이 남아 있는지**를 봅니다.",
         "",
-        f"- **변화 흐름 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}",
-        f"- **현재 변화 범위:** {current.get('scope_text', '확인 불가')}",
+        "| 항목 | 현재 |",
+        "|---|---|",
+        f"| 변화 흐름 | {episode.get('state_label', '현재 변화 흐름 없음')} |",
+        f"| 현재 범위 | {current.get('scope_text', '확인 불가')} |",
     ]
     if episode.get("started_at"):
-        lines.append(f"- **현재 변화 흐름 시작:** {episode.get('started_at')} · 마지막 의미 있는 변화 {episode.get('last_meaningful_activity_at') or '확인 불가'}")
+        lines.append(f"| 시작·최근 변화 | {episode.get('started_at')} · {episode.get('last_meaningful_activity_at') or '확인 불가'} |")
     if state == "dormant":
         lines.append("- **한동안 새 변화 없음의 의미:** 한동안 새 변화는 없지만 이전 변화가 완전히 사라졌다는 뜻은 아닙니다. 다른 시장에서 새 변화가 나타나면 별도의 변화 흐름으로 구분합니다.")
     if episode.get("prior_residual_nodes"):
         lines.append("- **이전 변화의 영향:** 이전 변화가 완전히 사라지기 전에 새 변화가 시작됐습니다.")
 
-    lines += ["", "#### 실제 시장별 현재 상태"]
+    lines += ["", "#### 실제 시장별 현재 상태", "", "| 시장 | 상태 | 확인·잔존 |", "|---|---|---|"]
     for key in ("HY", "BBB", "A", "CP"):
         row = nodes.get(key) or {}
         if not row.get("available"):
-            lines.append(f"- **{key}:** 확인 불가")
+            lines.append(f"| {key} | 확인 불가 | - |")
             continue
         extra = []
         if row.get("confirmed_at"):
-            extra.append(f"부담 상승 확인 {row.get('confirmed_at')}")
+            extra.append(f"상승 확인 {row.get('confirmed_at')}")
         if row.get("residual_change") is not None:
             extra.append(f"기준선 대비 {row.get('residual_change') / 100.0:+.2f}%p 남음")
-        suffix = " · " + " · ".join(extra) if extra else ""
-        lines.append(f"- **{row.get('name', key)}:** {row.get('state_label', '확인 불가')}{suffix}")
+        detail = " · ".join(extra) if extra else "-"
+        lines.append(f"| {key} | {credit_state_name(row.get('state'), row.get('state_label'))} | {detail} |")
 
     lines += [
         "",
-        "#### 저신용 기업 쪽 상대 부담 해석 기준",
-        f"- {lens.get('label', '확인 불가')}",
+        "#### HY−BBB",
+        "",
+        "| 현재 차이 | 1개월 변화 | 해석 |",
+        "|---:|---:|---|",
     ]
-    if lens.get("latest_value_bp") is not None:
-        lines.append(f"- HY-BBB 차이: {lens.get('latest_value_bp') / 100.0:.2f}%p · 약 1개월 {lens.get('change_1m_bp', 0.0) / 100.0:+.2f}%p")
+    lens_value = "-" if lens.get("latest_value_bp") is None else f"{lens.get('latest_value_bp') / 100.0:.2f}%p"
+    lens_change = "-" if lens.get("change_1m_bp") is None else f"{lens.get('change_1m_bp') / 100.0:+.2f}%p"
+    lines.append(f"| {lens_value} | {lens_change} | {lens.get('label', '확인 불가')} |")
     cp_calendar = current.get("cp_calendar_context") or {}
     if cp_calendar.get("year_end"):
         lines += ["", "#### 단기자금 캘린더 진단", f"- {cp_calendar.get('note')}"]
@@ -209,7 +214,7 @@ def _credit_episode_section(dq: dict) -> str:
         ]
     lines += [
         "",
-        "> HY-BBB 차이는 별도 시장이 아니라 HY와 BBB의 상대적 차이를 보는 해석 기준입니다. 기업 신용 범위 엔진에서 별도 시장으로 두 번 세지 않습니다.",
+        "> HY와 BBB의 상대 차이는 별도 시장이 아니라 두 시장의 움직임 차이를 보는 해석 기준입니다. 기업 신용 범위 엔진에서 별도 시장으로 두 번 세지 않습니다.",
     ]
     return "\n".join(lines)
 
@@ -230,7 +235,7 @@ def _axes_section(axes: dict) -> str:
     base = [axis_name(x) for x in (axes.get("base_axes") or [])]
 
     members = rt.get("members", {})
-    direction_text = {"상승": "오르는 중", "하락": "내리는 중", "기본": "큰 움직임 없음"}
+    direction_text = {"상승": "상승", "하락": "하락", "기본": "뚜렷한 방향 없음"}
     member_text = " · ".join(
         f"{core_name(key, short=True)} {direction_text.get(members.get(key, '기본'), members.get(key, '기본'))}"
         for key in ("DGS30", "DGS2", "DFII10")
@@ -244,13 +249,13 @@ def _axes_section(axes: dict) -> str:
 
     lines = [
         "### 여러 지표를 같이 보면",
-        f"**현재 3개 영역 중 {changed_count}개에서 평소와 다른 움직임이 보입니다.**",
+        f"**현재 3개 영역 중 {changed_count}개에서 경계 기준에 걸린 움직임이 보입니다.**",
         "",
     ]
     if changed:
-        lines.append(f"- 평소와 다른 움직임이 보이는 곳: **{' · '.join(changed)}**")
+        lines.append(f"- 경계 기준에 걸린 곳: **{' · '.join(changed)}**")
     if base:
-        lines.append(f"- 큰 움직임이 없는 곳: {' · '.join(base)}")
+        lines.append(f"- 현재 경계 기준에 걸리지 않은 곳: {' · '.join(base)}")
     lines += [
         "",
         f"#### {axis_name('변동성·신용')} — {vc_label}",
@@ -380,12 +385,12 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
         lines += [
             "",
             "## 시장 전체",
-            f"- **3개 영역 중 {changed_count}개**에서 평소와 다른 움직임이 보입니다.",
+            f"- **3개 영역 중 {changed_count}개**에서 경계 기준에 걸린 움직임이 보입니다.",
         ]
         if changed:
             lines.append(f"- 움직이는 곳: **{' · '.join(changed)}**")
         if base:
-            lines.append(f"- 큰 움직임이 없는 곳: {' · '.join(base)}")
+            lines.append(f"- 현재 경계 기준에 걸리지 않은 곳: {' · '.join(base)}")
 
     readings = dq.get("readings") or []
     lines += ["", "## 눈에 띄는 조합"]

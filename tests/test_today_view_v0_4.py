@@ -54,7 +54,7 @@ def test_renders_axes_and_reading():
 
 def test_aux_directions_shown():
     md = render_today_markdown(_dq(), _aux_df())
-    assert "10년 일반·물가연동 국채금리 차이(10Y Breakeven)" in md and "오르는 중" in md
+    assert "10년 일반·물가연동 국채금리 차이(10Y Breakeven)" in md and "상승" in md
     assert "확인 불가" in md  # 장기채 보유에 요구되는 추가 보상(10Y Term Premium)
 
 

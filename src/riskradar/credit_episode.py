@@ -32,12 +32,12 @@ NODE_NAMES = {
 }
 
 NODE_STATE_LABELS = {
-    "normal": "평소 상태",
-    "early_change": "초기 변화",
+    "normal": "특이 신호 없음",
+    "early_change": "상승 조짐",
     "newly_rising": "상승 확인",
-    "rising_persistent": "상승 지속",
-    "retracing": "되돌림",
-    "normalized": "정상화",
+    "rising_persistent": "높은 수준 지속",
+    "retracing": "하락 전환",
+    "normalized": "신호 해제",
 }
 
 EPISODE_STATE_LABELS = {
@@ -502,10 +502,10 @@ def _scope_text(nodes: dict[str, dict]) -> str:
     if not confirmed:
         if early:
             names = "·".join(NODE_NAMES[n] for n in early)
-            return f"뚜렷한 변화로 확정되기 전의 초기 변화가 {names}에서 관찰되고 있습니다."
-        return "현재 기업 신용시장에서 새로 이어지는 범위 변화는 뚜렷하지 않습니다."
+            return f"상승 조짐이 {names}에서 보입니다."
+        return "현재 기업 신용에서 뚜렷한 상승 신호는 없습니다."
     if confirmed == ["HY"]:
-        text = "현재 확인된 변화는 신용등급 낮은 기업의 회사채에 집중돼 있습니다."
+        text = "현재 상승 신호는 신용등급 낮은 기업의 회사채에 집중돼 있습니다."
     else:
         parts = []
         if "HY" in confirmed:
@@ -514,13 +514,13 @@ def _scope_text(nodes: dict[str, dict]) -> str:
             parts.append("투자등급 경계 기업")
         if "A" in confirmed:
             parts.append("A등급 기업")
-        text = "회사채 변화가 " + "·".join(parts) + "에서 확인되고 있습니다." if parts else ""
+        text = "상승 신호가 " + "·".join(parts) + "에서 확인되고 있습니다." if parts else ""
         if "CP" in confirmed:
-            text += (" " if text else "") + "단기 기업자금시장도 함께 변화하고 있습니다."
+            text += (" " if text else "") + "단기 기업자금시장에서도 상승 신호가 확인됩니다."
         else:
-            text += (" " if text else "") + "단기 기업자금시장까지 이어진 모습은 아직 뚜렷하지 않습니다."
+            text += (" " if text else "") + "단기 기업자금시장에서는 아직 뚜렷한 상승 신호가 없습니다."
     if early:
-        text += " " + "·".join(NODE_NAMES[n] for n in early) + "에서는 초기 변화를 관찰 중입니다."
+        text += " " + "·".join(NODE_NAMES[n] for n in early) + "에서는 상승 조짐을 관찰 중입니다."
     return text.strip()
 
 
@@ -541,13 +541,13 @@ def _lens_from_histories(node_frames: dict[str, pd.DataFrame], cfg: CreditEpisod
     if ch is not None and len(valid) >= cfg.min_history_obs:
         pct = float((valid.abs() <= abs(ch)).mean() * 100.0)
     if ch is None or pct is None:
-        state, label = "unclear", "등급 간 차별 변화 확인이 아직 어렵습니다."
+        state, label = "unclear", "두 시장의 차이를 아직 판단하기 어렵습니다."
     elif pct < 60:
-        state, label = "together", "투기등급과 투자등급 경계가 비교적 함께 움직이고 있습니다."
+        state, label = "together", "두 시장이 비교적 함께 움직이는 중"
     elif ch > 0:
-        state, label = "low_credit_concentrated", "부담 증가가 투기등급 기업에 더 집중되는 방향입니다."
+        state, label = "low_credit_concentrated", "HY 쪽 상승이 더 강한 방향"
     else:
-        state, label = "boundary_catching_up", "투자등급 경계 기업의 부담이 상대적으로 더 따라오는 방향입니다."
+        state, label = "boundary_catching_up", "BBB가 상대적으로 더 따라오는 방향"
     return {
         "available": True,
         "state": state,
@@ -565,7 +565,7 @@ def _vix_context(vix_frame: pd.DataFrame | None, current_episode: dict | None) -
         return {"available": False, "onset": "확인 불가", "current": "확인 불가"}
     v = vix_frame.copy().sort_values("date")
     current_state = str(v.iloc[-1].get("state_code", ""))
-    current = "주식시장 불안이 현재도 높음" if current_state in {"watch", "stress"} else "주식시장 불안은 현재 평소 수준"
+    current = "주식시장 불안이 현재도 높음" if current_state in {"watch", "stress"} else "주식시장 변동성에 현재 경계 신호 없음"
     if not current_episode or not current_episode.get("started_at"):
         return {"available": True, "onset": "현재 신용 변화 흐름 없음", "current": current}
     onset = pd.Timestamp(current_episode["started_at"])

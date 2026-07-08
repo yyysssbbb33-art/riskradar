@@ -49,8 +49,8 @@ def test_domain_strip_is_three_fact_cards_without_aggregate_score():
     html = render_domain_strip_html(_credit_quality(), _matrix())
     assert html.count("rr-domain-card") == 3
     assert "신용" in html and "금리" in html and "변동성" in html
-    assert "HY·BBB 변화" in html
-    assert "30Y ↑" in html
+    assert "HY" in html and "3.84" not in html  # fixture has no numeric HY source
+    assert "30Y" in html and "+0.20%p" in html
     assert "종합" not in html and "위험점수" not in html
 
 
@@ -83,8 +83,9 @@ def test_remaining_change_chips_use_days_only_when_confirmed_date_exists():
     }
     html = render_remaining_changes_html(snap, {})
     assert "rr-chip" in html
-    assert "HY 상승 지속" in html and "일째" in html
-    assert "30Y 오르는 중" in html and "지속 중" in html
+    assert "HY 높은 수준 지속" in html and "일째" in html
+    assert "현재 추세" in html
+    assert "지속 중" not in html
 
 
 def test_next_checks_are_numbered_and_capped_at_three():
@@ -139,7 +140,7 @@ def test_credit_timeline_is_scan_list_and_keeps_safety_text():
     })
     assert "rr-timeline-row" in html
     assert "rr-market-badge" in html
-    assert "확인 전 초기 변화" in html
+    assert "상승 확인 전 조짐" in html
     assert "어느 시장이 먼저 움직였는지에 의미를 붙이거나" in html
 
 

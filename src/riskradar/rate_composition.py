@@ -296,7 +296,7 @@ def describe_total_sentence(value: Any) -> str:
 
 
 def render_markdown(summary: dict | None) -> str:
-    """첫 화면용 30년 미국 국채금리 변화 설명."""
+    """금리 탭용 30년 미국 국채금리 변화 설명."""
     s = summary or {}
     lines = ["## 30년 미국 국채금리 변화 나눠보기"]
     if s.get("status") != "ok":
@@ -373,7 +373,7 @@ def _scan_summary(real_bp: Any, gap_bp: Any) -> str:
 
 
 def render_scan_html(summary: dict | None) -> str:
-    """v0.7.4 첫 화면용 30년 금리 시각 브리핑.
+    """30년 금리 탭용 시각 브리핑.
 
     산술 항등식을 인과적 기여도로 오해시키지 않도록 `기여`, `합계`라는 표현을 쓰지 않는다.
     같은 방향일 때만 막대로 비교하고, 반대 방향이면 숫자와 화살표만 보여준다.
@@ -391,6 +391,8 @@ def render_scan_html(summary: dict | None) -> str:
         )
 
     primary = s.get("primary") or {}
+    latest = s.get("latest") or {}
+    latest_level = latest.get("DGS30")
     total = primary.get("DGS30_change_bp")
     real = primary.get("DFII30_change_bp")
     gap = primary.get("INFLCOMP30_change_bp")
@@ -439,13 +441,15 @@ def render_scan_html(summary: dict | None) -> str:
 
     curve = s.get("curve") or {}
     curve_text = escape(str(curve.get("text") or "장·단기 금리 관계는 현재 확인할 수 없습니다."))
+    level_text = "-" if latest_level is None else f"{float(latest_level):.2f}%"
     return (
         '<section class="rr-rate-panel">'
-        '<div class="rr-section-title"><h2>30년 금리</h2><span class="rr-rate-total">'
-        f'{fmt(total)} {_scan_direction(total)}</span></div>'
-        '<div class="rr-rate-kicker">같은 기간 움직임 · 최근 약 1개월</div>'
+        '<div class="rr-rate-head">'
+        '<div><span>30Y</span><strong>' + escape(level_text) + '</strong></div>'
+        '<div><span>최근 1개월</span><strong class="rr-rate-total">' + escape(f'{_scan_direction(total)} {fmt(total)}') + '</strong></div>'
+        '</div>'
+        '<div class="rr-rate-kicker">같은 만기의 두 움직임</div>'
         + movement_html
         + f'<div class="rr-rate-conclusion">{escape(_scan_summary(real, gap))}</div>'
-        + f'<div class="rr-rate-curve">{curve_text}</div>'
         + '</section>'
     )

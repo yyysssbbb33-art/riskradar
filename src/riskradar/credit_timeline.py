@@ -36,15 +36,15 @@ def _split_nodes(value: Any) -> list[str]:
 
 def _event_text(kind: str, state: str, state_label: str) -> tuple[str, str] | None:
     if kind == "confirmed":
-        return "부담 상승 확인", "confirmed"
+        return "상승 확인", "confirmed"
     if kind == "new_peak":
-        return "확인 뒤 부담이 더 커져 이전 고점을 넘어섬", "new_peak"
+        return "이전 고점 돌파", "new_peak"
     if kind == "retracing":
-        return "부담이 줄기 시작", "retracing"
+        return "하락 전환", "retracing"
     if kind == "normalized":
-        return "평소 수준으로 돌아옴", "normalized"
+        return "신호 해제", "normalized"
     if state == "rising_persistent":
-        return "상승 지속으로 바뀜", "state_change"
+        return "높은 수준 지속으로 바뀜", "state_change"
     if state in _CONFIRMED_STATES:
         return f"상태가 ‘{state_label}’로 바뀜", "state_change"
     return None
@@ -256,7 +256,7 @@ def render_credit_timeline_markdown(data: dict | None, *, max_events: int = 24) 
     lines += [
         f"**{data.get('window_start')} ~ {data.get('window_end')}** · 달력 {days}일 기준",
         "",
-        "최근 90일 동안 HY·BBB·A·CP 시장에서 **실제로 확인된 변화와 이후 부담이 더 커진 시점·줄기 시작한 시점·평소 수준으로 돌아온 시점**만 모았습니다. 확인되지 않고 사라진 초기 움직임은 따로 사건으로 세지 않습니다.",
+        "최근 90일 동안 HY·BBB·A·CP 시장에서 **실제로 확인된 상승·고점 돌파·하락 전환·신호 해제**만 모았습니다. 확인 전에 잠깐 나타났다가 사라진 상승 조짐은 따로 사건으로 세지 않습니다.",
     ]
 
     events = list(data.get("events") or [])
@@ -274,7 +274,7 @@ def render_credit_timeline_markdown(data: dict | None, *, max_events: int = 24) 
                 f"- **{event.get('node_name', event.get('node'))}:** {event.get('text')} · 당시 상태: `{event.get('state_label', '확인 불가')}`"
             )
             if event.get("event_type") == "confirmed" and event.get("candidate_start"):
-                lines.append(f"  - 확인되기 전부터 {event.get('candidate_start')}에 초기 변화가 보이기 시작했습니다.")
+                lines.append(f"  - 상승 확인 전 조짐: {event.get('candidate_start')}부터")
         if len(events) > len(shown):
             lines += ["", f"이 {days}일 동안 확인된 변화 {len(events)}개 중 최근 {len(shown)}개를 보여줍니다."]
 
@@ -343,7 +343,7 @@ def render_credit_timeline_html(data: dict | None, *, max_events: int = 24) -> s
             text = str(event.get("text") or "변화 확인")
             state = str(event.get("state_label") or "")
             candidate = event.get("candidate_start") if event.get("event_type") == "confirmed" else None
-            sub = f'확인 전 초기 변화 · {candidate}' if candidate else state
+            sub = f'상승 확인 전 조짐 · {candidate}' if candidate else state
             raw_date = str(event.get("date") or "-")
             try:
                 display_date = pd.Timestamp(raw_date).strftime("%m.%d")

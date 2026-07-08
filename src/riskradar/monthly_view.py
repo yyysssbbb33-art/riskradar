@@ -209,8 +209,8 @@ def _aux_direction_text(aux_df: pd.DataFrame | None, key: str) -> str:
         return "자료가 오래돼 현재 해석에서 제외"
     direction = str(row.get("direction", "확인 불가"))
     return {
-        "상승": "오르는 중",
-        "하락": "내리는 중",
+        "상승": "상승",
+        "하락": "하락",
         "보합": "뚜렷한 움직임 없음",
         "확인 불가": "확인 불가",
     }.get(direction, direction)
@@ -288,7 +288,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     lines += ["", "### 새 변화가 처음 확인된 날짜"]
     if events:
         for date, key in events[:5]:
-            lines.append(f"- **{date}:** {core_name(key, short=True)}에서 평소와 다른 움직임이 처음 잡혔습니다.")
+            lines.append(f"- **{date}:** {core_name(key, short=True)}에서 경계 기준에 걸린 움직임이 처음 잡혔습니다.")
         lines.append("\n> 날짜를 나열할 뿐 선행·후행이나 원인을 주장하지 않습니다. 지표별 판정 규칙 차이도 있기 때문입니다.")
     else:
         lines.append("- 기간 중 기본 상태에서 새 변화 상태로 바뀐 전환은 뚜렷하지 않습니다.")
@@ -362,7 +362,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
         lines.append(
             f"- 2년 금리 하락·30년 금리 상승이 엇갈렸습니다. 현재 **{aux_name('BREAKEVEN')}**은 `{be}`, "
             f"**{aux_name('TERMPREM')}**은 `{tp}`입니다. 두 값은 10년 구간을 이해하는 참고 자료이며, "
-            "30년 금리 변화는 첫 화면의 ‘30년 미국 국채금리 변화 나눠보기’에서 먼저 봅니다."
+            "30년 금리 변화는 금리 탭의 ‘30년 금리’에서 먼저 봅니다."
         )
         added += 1
 

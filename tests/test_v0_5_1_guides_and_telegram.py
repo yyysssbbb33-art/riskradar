@@ -81,9 +81,9 @@ def test_aux_detail_connects_current_data_companions_branches_and_card():
     row = aux_df.loc[aux_df["key"] == "CPSPREAD"].iloc[-1]
     md = render_aux_detail(row, aux_df=aux_df, matrix=matrix)
     assert "## 지금 데이터로 보면" in md
-    assert "약 1개월 변화" in md and "+0.11%p" in md
-    assert "### 같이 볼 지표와 현재 결과" in md
-    assert "신용등급이 낮은 기업의 추가 금리(HY OAS)" in md
+    assert "1개월 변화" in md and "+0.11%p" in md
+    assert "### 같이 볼 지표" in md
+    assert "HY OAS" in md
     assert "투자등급 경계 기업의 추가 금리(BBB OAS)" in md
     assert "미국 금융여건(NFCI)" in md
     assert "### 결과가 달라지면" in md
