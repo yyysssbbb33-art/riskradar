@@ -28,13 +28,13 @@ def test_each_indicator_has_current_state_to_next_check_flow():
     for key in ["VIX", "HYOAS", "T10Y3M", "DGS30", "DGS2", "DFII10"]:
         row = matrix.loc[matrix["key"] == key].iloc[0]
         md = render_state_guidance(key, row, frames=frames, aux_df=aux, matrix=matrix)
-        assert "## 지금 이 상태에서 다음으로 볼 것" in md
+        assert "## 다음에 같이 볼 것" in md
         assert "왜 보나" in md
         assert "현재 결과:" in md
-        assert "결과가 달라지면" in md
+        assert "움직임별 결과" in md
         assert "오르면" in md
         assert "내리면" in md
-        assert "뚜렷한 변화가 없으면" in md
+        assert "큰 변화 없음" in md
 
 
 def test_dgs30_detail_shows_current_aux_result_and_alternative_branches():
@@ -46,9 +46,9 @@ def test_dgs30_detail_shows_current_aux_result_and_alternative_branches():
     assert "10년 일반·물가연동 국채금리 차이" in md
     assert "30년 금리 변화" in md
     assert "현재 결과: 상승" in md
-    assert "결과가 달라지면" in md
+    assert "움직임별 결과" in md
     assert "내리면:" in md
-    assert "뚜렷한 변화가 없으면:" in md
+    assert "큰 변화 없음:" in md
 
 
 def test_stale_aux_is_marked_and_not_presented_as_current_direction():

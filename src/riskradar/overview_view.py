@@ -37,6 +37,34 @@ _CREDIT_NAMES = {
 }
 
 
+
+def _visual_state_class(key: str, state_code: str, *, drop: bool = False, credit_state: str | None = None) -> str:
+    """판정 의미를 바꾸지 않고 카드 강조 강도만 정한다."""
+    if drop:
+        return "rr-state-easing"
+    if credit_state is not None:
+        return {
+            "normal": "rr-state-quiet",
+            "early_change": "rr-state-watch",
+            "newly_rising": "rr-state-hot",
+            "rising_persistent": "rr-state-hot",
+            "retracing": "rr-state-easing",
+            "normalized": "rr-state-done",
+        }.get(credit_state, "rr-state-quiet")
+    if key == "VIX":
+        return {"calm": "rr-state-quiet", "watch": "rr-state-watch", "stress": "rr-state-hot"}.get(state_code, "rr-state-quiet")
+    if key == "HYOAS":
+        return {"calm": "rr-state-quiet", "neutral": "rr-state-quiet", "watch": "rr-state-watch", "stress": "rr-state-hot"}.get(state_code, "rr-state-quiet")
+    if key in {"DGS30", "DGS2", "DFII10"}:
+        return {"stable": "rr-state-quiet", "rise_watch": "rr-state-watch", "rate_shock": "rr-state-hot"}.get(state_code, "rr-state-quiet")
+    if key == "T10Y3M":
+        return {
+            "normal": "rr-state-quiet", "watch": "rr-state-watch",
+            "inverted": "rr-state-hot", "long_inverted": "rr-state-hot",
+            "re_normalizing": "rr-state-easing", "re_normalized": "rr-state-done",
+        }.get(state_code, "rr-state-quiet")
+    return "rr-state-quiet"
+
 def _text(value: Any, default: str = "확인 불가") -> str:
     if value is None:
         return default
@@ -166,7 +194,8 @@ def render_core_cards_html(matrix: pd.DataFrame, chart_data: pd.DataFrame, *, ch
         change = row.get("change_20obs")
         change_text = fmt_change(change, row.get("change_unit", ""))
         direction = _direction_symbol(change)
-        card_class = "rr-core-card rr-core-card-hot" if noteworthy else "rr-core-card rr-core-card-quiet"
+        visual_class = _visual_state_class(key, code, drop=drop)
+        card_class = f"rr-core-card {visual_class}" + (" rr-core-card-hot" if noteworthy else " rr-core-card-quiet")
         cards.append(
             f'<article class="{card_class}">'
             '<div class="rr-core-head">'
@@ -206,31 +235,33 @@ def render_domain_strip_html(data_quality: dict | None, matrix: pd.DataFrame) ->
         credit_state = "확인 불가"
 
     def core_card(title: str, short_name: str, row: pd.Series | None,
-                  state: str | None = None) -> tuple[str, str, str, str, str]:
+                  state: str | None = None, *, credit_state_code: str | None = None) -> tuple[str, str, str, str, str, str]:
+        domain_class = {"신용": "rr-domain-credit", "금리": "rr-domain-rate", "변동성": "rr-domain-vol"}.get(title, "")
         if row is None:
-            return title, short_name, "-", "확인 불가", "· -"
+            return title, short_name, "-", "확인 불가", "· -", f"{domain_class} rr-state-quiet"
         value = fmt_value(row.get("latest_value"), str(row.get("value_unit", "")))
         change_raw = row.get("change_20obs")
         change = fmt_change(change_raw, str(row.get("change_unit", "")))
-        label = state or state_name(
-            str(row.get("state_code", "")), str(row.get("state_label", "")),
-            drop=bool(row.get("drop_flag", False)), key=str(row.get("key", "")),
-        )
-        return title, short_name, value, label, f"{_direction_symbol(change_raw)} {change}"
+        key = str(row.get("key", ""))
+        code = str(row.get("state_code", ""))
+        drop = bool(row.get("drop_flag", False))
+        label = state or state_name(code, str(row.get("state_label", "")), drop=drop, key=key)
+        visual = _visual_state_class(key, code, drop=drop, credit_state=credit_state_code)
+        return title, short_name, value, label, f"{_direction_symbol(change_raw)} {change}", f"{domain_class} {visual}"
 
     cards = [
-        core_card("신용", "HY", hy, credit_state),
+        core_card("신용", "HY", hy, credit_state, credit_state_code=str(hy_state_row.get("state", "normal"))),
         core_card("금리", "30Y", rate),
         core_card("변동성", "VIX", vix),
     ]
     return '<div class="rr-domain-strip">' + ''.join(
-        '<div class="rr-domain-card">'
+        f'<div class="rr-domain-card {escape(visual)}">'
         f'<small>{escape(title)}</small>'
         f'<div class="rr-domain-metric"><strong>{escape(short_name)}</strong><b>{escape(value)}</b></div>'
         f'<div class="rr-domain-state">{escape(state)}</div>'
         f'<div class="rr-domain-change">{escape(change)} <span>1개월</span></div>'
         '</div>'
-        for title, short_name, value, state, change in cards
+        for title, short_name, value, state, change, visual in cards
     ) + '</div>'
 
 def _event_name(section: str, key: str) -> str:
@@ -243,7 +274,7 @@ def _event_name(section: str, key: str) -> str:
     if section == "credit_lens":
         return "HY-BBB 등급 차이"
     if section == "credit_episode":
-        return "기업 신용 변화 흐름"
+        return "기업 신용 상태"
     return key
 
 
@@ -258,8 +289,8 @@ def _friendly_event(event: dict) -> str:
         return f"**{name}**: {plain_language(str(previous))} → {plain_language(str(current))}"
     if section == "credit_episode":
         if transition_type == "observation_clock_transition":
-            return "관측 기간이 지나면서 **기업 신용 변화 흐름**이 휴면 또는 종료 상태로 바뀌었습니다."
-        return "**기업 신용 변화 흐름**의 상태 또는 변화 범위가 바뀌었습니다."
+            return "관측 기간이 지나면서 **기업 신용 상태**가 휴면 또는 종료로 바뀌었습니다."
+        return "**기업 신용 상태** 또는 움직이는 시장이 바뀌었습니다."
     return plain_language(str(event.get("message", "변화가 기록됐습니다.")))
 
 
@@ -476,7 +507,7 @@ def render_next_checks_html(data_quality: dict | None, decision_snapshot: dict |
     for node in ("HY", "BBB", "A", "CP"):
         row = nodes.get(node) or {}
         if participant(node) and str(row.get("state")) in {"newly_rising", "rising_persistent"}:
-            checks.append((node, "부담이 줄기 시작하는지, 더 커지는지"))
+            checks.append((node, "내려오기 시작하는지, 다시 오르는지"))
             break
     if len(checks) < 3:
         axes = dq.get("axes") or {}
@@ -547,11 +578,11 @@ def render_remaining_changes_markdown(decision_snapshot: dict | None, data_quali
         fake = pd.Series({"key": key, "state_code": code, "drop_flag": drop})
         if _core_noteworthy(fake):
             items.append(f"**{core_name(key)}**: {_text(row.get('state_label'))}")
-    lines = ["## 계속 이어지는 변화"]
+    lines = ["## 현재 추세"]
     if items:
         lines.extend(f"- {x}" for x in items[:4])
     else:
-        lines.append("현재 계속 이어진다고 볼 만한 뚜렷한 변화는 많지 않습니다.")
+        lines.append("현재 뚜렷한 추세는 많지 않습니다.")
     return "\n".join(lines)
 
 
@@ -568,9 +599,9 @@ def render_next_checks_markdown(data_quality: dict | None, decision_snapshot: di
         return bool((nodes.get(node) or {}).get("participant", False))
 
     if participant("HY") and not participant("BBB") and good("BBB"):
-        checks.append(("투자등급 경계 기업", "뚜렷한 변화 없음", "여기에서도 변화가 나타나면 회사채 부담이 투자등급 경계 기업까지 이어지는지 봅니다."))
+        checks.append(("투자등급 경계 기업", "뚜렷한 변화 없음", "BBB 회사채 금리도 함께 오르는지 봅니다."))
     elif participant("BBB") and not participant("A") and good("A"):
-        checks.append(("A등급 기업", "뚜렷한 변화 없음", "여기에서도 변화가 나타나면 회사채 부담이 A등급 기업까지 이어지는지 봅니다."))
+        checks.append(("A등급 기업", "뚜렷한 변화 없음", "A등급 회사채 금리도 함께 오르는지 봅니다."))
     elif participant("A"):
         checks.append(("A등급 기업", _text((nodes.get("A") or {}).get("state_label")), "되돌림이 시작되는지, 기존 변화가 더 이어지는지 봅니다."))
 
@@ -581,7 +612,7 @@ def render_next_checks_markdown(data_quality: dict | None, decision_snapshot: di
         row = nodes.get(node) or {}
         state = str(row.get("state", ""))
         if participant(node) and state in {"newly_rising", "rising_persistent"}:
-            checks.append((_CREDIT_NAMES[node], _text(row.get("state_label")), "되돌림이 시작되는지, 아니면 부담이 다시 커지는지 봅니다."))
+            checks.append((_CREDIT_NAMES[node], _text(row.get("state_label")), "내려오기 시작하는지, 아니면 다시 오르는지 봅니다."))
             break
 
     if not checks:
@@ -668,7 +699,8 @@ def render_credit_range_map_html(data_quality: dict | None,
         label = credit_state_name(state, row.get("state_label")) if available else "확인 불가"
         symbol = _STATE_SYMBOLS.get(state, "○" if state in {"normal", "normalized"} else "?")
         hot = node in participants or state == "early_change"
-        cls = "rr-credit-tile rr-credit-tile-hot" if hot else "rr-credit-tile rr-credit-tile-quiet"
+        visual = _visual_state_class(node, "", credit_state=state)
+        cls = f"rr-credit-tile {visual}" + (" rr-credit-tile-hot" if hot else " rr-credit-tile-quiet")
         value_text, change_text, direction = _credit_metric(node, matrix, aux_df)
         return (
             f'<div class="{cls}">'
@@ -681,7 +713,7 @@ def render_credit_range_map_html(data_quality: dict | None,
             '</div>'
         )
 
-    scope = plain_language(_text(current.get("scope_text"), "현재 범위를 확인할 수 없습니다."))
+    scope = plain_language(_text(current.get("scope_text"), "현재 상태를 확인할 수 없습니다."))
     lens_label = plain_language(_text(lens.get("label"), "확인 불가"))
     lens_value = lens.get("latest_value_bp")
     lens_change = lens.get("change_1m_bp")

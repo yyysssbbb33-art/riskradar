@@ -45,7 +45,7 @@ def test_today_summary_keeps_only_core_sections_and_points_to_full_detail():
     assert "# 오늘의 해석" in summary
     assert "시장 전체" in summary
     assert "눈에 띄는 조합" in summary
-    assert "전체 근거" in summary
+    assert "신용·금리 탭" in summary
     assert "결과가 달라지면" not in summary
 
 
@@ -55,8 +55,8 @@ def test_non_guide_tabs_keep_reference_content_behind_short_closed_accordions():
 
     expected = [
         'with gr.Accordion("관리·진단", open=False)',
-        'with gr.Accordion("왜 이렇게 봤나", open=False)',
-        'with gr.Accordion("금리 설명·주의사항", open=False)',
+        'with gr.Accordion("왜 이렇게 봤나", open=False, elem_classes="rr-detail-accordion")',
+        'with gr.Accordion("금리 설명·주의사항", open=False, elem_classes="rr-detail-accordion")',
         'with gr.Accordion("지난 30일 읽는 법", open=False)',
         'with gr.Accordion("데이터 설명·주의사항", open=False)',
         '## 날짜별 지표 보기',

@@ -86,8 +86,8 @@ def test_aux_detail_connects_current_data_companions_branches_and_card():
     assert "HY OAS" in md
     assert "투자등급 경계 기업의 추가 금리(BBB OAS)" in md
     assert "미국 금융여건(NFCI)" in md
-    assert "### 결과가 달라지면" in md
-    assert "### 8. 근거의 한계" in md
+    assert "### 움직임별 결과" in md
+    assert "결과적으로 볼 수 있는 변화" in md
 
 
 def test_external_reference_details_explain_reference_only_role():
@@ -97,20 +97,19 @@ def test_external_reference_details_explain_reference_only_role():
         row = aux_df.loc[aux_df["key"] == key].iloc[-1]
         md = plain_language(render_aux_detail(row, aux_df=aux_df, matrix=matrix))
         assert "외부" in md
-        assert "종합지표" in md
-        assert "침체" in md or "금융위기" in md
-        assert "해석 엔진" in md or "독립 판정" in md or "외부 검산용" in md or "넣지 않습니다" in md
+        assert "외부 참고 지표" in md
+        assert "금융여건" in md or "스트레스" in md
+        assert "직접 바꾸지 않습니다" in md
 
 
 def test_relationship_guide_covers_credit_ladder_cp_and_external_references():
     text = plain_language(RELATIONSHIP_GUIDE)
-    assert "기업 신용 부담은 어디에서 나타나나" in text
-    assert "단기 기업자금시장(CP)까지 변화가 나타나나" in text
-    assert "외부 참고 지표는 어떻게 참고하나" in text
-    assert "투자등급 경계 기업" in text
-    assert "CP Spread" in text
-    assert "미국 금융여건(NFCI)" in text
-    assert "미국 금융시장 불안(STLFSI)" in text
+    assert "기업 신용" in text
+    assert "단기 기업자금의 신용도별 금리 차이" in text
+    assert "외부 참고 지표" in text
+    assert "BBB 기업" in text
+    assert "NFCI" in text
+    assert "STLFSI" in text
 
 
 def test_telegram_shows_all_results_then_interpretation():

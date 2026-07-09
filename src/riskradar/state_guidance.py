@@ -15,6 +15,7 @@ from . import config as C
 from .core_directions import compute_core_direction
 from .display_text import aux_name, core_name, plain_language, state_name
 from .formatting import fmt_change
+from .user_copy import MOVEMENT_RESULTS, movement_label, movement_result, movement_result_cell
 
 UP, DOWN, FLAT, NA = "상승", "하락", "보합", "판정불가"
 
@@ -87,12 +88,12 @@ def _plan_vix(state: str) -> GuidancePlan:
     if state == "경계 신호 없음":
         intro = (
             "주식시장 예상 변동성은 현재 경계 기준에 걸리지 않았습니다. "
-            "그래도 회사채 쪽이 따로 움직일 수 있으므로 기업의 추가 금리를 함께 확인합니다."
+            "그래도 회사채 금리가 따로 오를 수 있으므로 HY·BBB·A를 함께 확인합니다."
         )
     else:
         intro = (
             f"주식시장 예상 변동성은 현재 '{state}'입니다. "
-            "이 변화가 주식시장에만 있는지, 회사채 시장에도 같이 나타나는지 확인합니다."
+            "이 변화가 주식시장에만 있는지, 회사채 금리도 함께 오르는지 확인합니다."
         )
     return GuidancePlan(intro, (
         _check(
@@ -104,7 +105,7 @@ def _plan_vix(state: str) -> GuidancePlan:
         ),
         _check(
             "BBBOAS",
-            "회사채 부담이 저신용 기업을 넘어 투자등급 경계 기업까지 이어지는지 봅니다.",
+            "BBB 회사채 금리도 함께 오르는지 봅니다.",
             "투자등급 경계 기업의 추가 금리도 오르면 기업 자금 부담이 더 높은 신용등급까지 나타나는지 볼 필요가 있습니다.",
             "투자등급 경계 기업의 추가 금리가 내리면 회사채 부담이 넓게 이어진다는 설명은 약해집니다.",
             "투자등급 경계 기업의 추가 금리에 뚜렷한 움직임이 없으면 변화가 주식시장이나 저신용 기업 쪽에 더 집중됐을 가능성을 봅니다.",
@@ -129,18 +130,18 @@ def _plan_vix(state: str) -> GuidancePlan:
 def _plan_hy(state: str) -> GuidancePlan:
     if state == "특이 신호 없음":
         intro = (
-            "신용등급 낮은 기업의 추가 금리에는 현재 특이 신호가 없습니다. "
+            "신용등급 낮은 기업의 회사채 금리는 현재 높은 수준이 아닙니다. "
             "A등급 기업과 주식시장에도 다른 움직임이 있는지 함께 봅니다."
         )
     else:
         intro = (
             f"신용등급 낮은 기업의 추가 금리는 현재 '{state}'입니다. "
-            "이 변화가 낮은 등급 기업에만 있는지, A등급 기업과 주식시장까지 넓어지는지 확인합니다."
+            "BBB·A등급 회사채 금리와 주식시장 변동성도 함께 움직이는지 확인합니다."
         )
     return GuidancePlan(intro, (
         _check(
             "BBBOAS",
-            "저신용 기업의 부담이 투자등급 경계 기업까지 이어지는지 봅니다.",
+            "BBB 회사채 금리도 함께 오르는지 봅니다.",
             "투자등급 경계 기업의 추가 금리도 오르면 기업 자금 부담이 저신용 기업을 넘어 넓어지는 설명을 더 지지합니다.",
             "투자등급 경계 기업의 추가 금리가 내리면 현재 변화가 저신용 기업에 더 집중됐다는 설명과 잘 맞습니다.",
             "투자등급 경계 기업의 추가 금리에 뚜렷한 움직임이 없으면 BBB까지 부담이 이어졌다는 확인 근거는 아직 약합니다.",
@@ -154,14 +155,14 @@ def _plan_hy(state: str) -> GuidancePlan:
         ),
         _check(
             "CPSPREAD",
-            "회사채 부담이 단기 기업자금시장의 신용도 차별까지 같이 나타나는지 봅니다.",
+            "단기 기업자금의 신용도별 금리 차이도 커지는지 봅니다.",
             "단기자금 금리 차이도 벌어지면 기업 자금조달 부담이 회사채뿐 아니라 단기시장에서도 나타나는지 더 확인합니다.",
             "단기자금 금리 차이가 줄면 단기 기업자금시장까지 부담이 이어졌다는 설명은 약해집니다.",
             "단기자금 금리 차이에 뚜렷한 움직임이 없으면 현재 회사채 변화가 단기 자금시장까지 이어졌다고 보기는 어렵습니다.",
         ),
         _check(
             "VIX",
-            "기업 자금 부담 변화가 주식시장 예상 변동성과 같은 시기에 나타나는지 봅니다.",
+            "HY 회사채 금리와 VIX가 같은 시기에 움직이는지 봅니다.",
             "주식시장 변동성도 커지면 주식과 회사채가 같은 시기에 움직인다는 설명을 더 지지합니다.",
             "주식시장 변동성이 줄면 회사채 쪽 변화가 주식시장과 같은 방향은 아니므로 회사채 자체 원인을 더 봅니다.",
             "주식시장 변동성에 뚜렷한 변화가 없으면 주식과 회사채가 함께 움직인다는 신호는 아직 뚜렷하지 않습니다.",
@@ -169,11 +170,11 @@ def _plan_hy(state: str) -> GuidancePlan:
         GuidanceCheck(
             "T10Y3M",
             "cycle_state",
-            "현재 회사채 부담과 10년 금리·3개월 금리의 관계를 따로 봅니다.",
+            "현재 HY 회사채 금리와 10년·3개월 금리 관계를 따로 봅니다.",
             {
-                "장기금리가 더 높음": "10년 금리가 3개월 금리보다 높습니다. 이 사실만으로 현재 회사채 부담과 같은 경기 결론을 내리지는 않습니다.",
-                "두 금리가 거의 비슷함": "10년 금리와 3개월 금리가 거의 비슷합니다. 회사채 부담과 같이 보되 하나의 경기 결론으로 묶지 않습니다.",
-                "단기금리가 더 높은 흐름": "3개월 금리가 10년 금리보다 높습니다. 경기보다 먼저 움직이는 신호와 현재 회사채 부담이 함께 움직이는지는 볼 수 있지만 침체 시점은 정할 수 없습니다.",
+                "장기금리가 더 높음": "10년 금리가 3개월 금리보다 높습니다. HY 회사채 금리와 함께 보되 하나의 경기 결론으로 묶지 않습니다.",
+                "두 금리가 거의 비슷함": "10년 금리와 3개월 금리가 거의 비슷합니다. HY 회사채 금리와 함께 보되 하나의 경기 결론으로 묶지 않습니다.",
+                "단기금리가 더 높은 흐름": "3개월 금리가 10년 금리보다 높습니다. HY 회사채 금리도 함께 오르는지는 볼 수 있지만 침체 시점은 정할 수 없습니다.",
                 "장기금리가 다시 높아지는 흐름": "한동안 3개월 금리가 더 높았지만 최근 10년 금리가 다시 높아졌습니다. 회사채 추가 금리도 같은 시기에 커지는지 따로 봅니다.",
                 "판정불가": "10년 금리와 3개월 금리의 관계를 확인할 수 없어 이 확인은 보류합니다.",
             },
@@ -189,20 +190,20 @@ def _plan_cycle(state: str) -> GuidancePlan:
         "장기금리가 다시 높아지는 흐름": "한동안 3개월 금리가 더 높았지만 최근 10년 금리가 다시 높아졌습니다.",
     }.get(state, f"현재 두 금리의 관계는 '{state}'입니다.")
     intro = (
-        f"{state_intro} 이 지표는 지금 시장이 불안한지를 직접 보여주기보다 경기보다 먼저 움직이는 신호에 가깝습니다. "
-        "그래서 현재 회사채 부담과 2년 금리를 따로 확인합니다."
+        f"{state_intro} 이 지표는 현재 시장 불안보다 경기 흐름의 배경을 먼저 보여줍니다. "
+        "그래서 HY 회사채 금리와 2Y를 따로 확인합니다."
     )
     return GuidancePlan(intro, (
         _check(
             "HYOAS",
-            "10년 금리와 3개월 금리의 관계 변화가 현재 기업 자금 부담과 같은 시기에 나타나는지 봅니다.",
+            "10년·3개월 금리 관계와 HY 회사채 금리가 같은 시기에 움직이는지 봅니다.",
             "신용등급 낮은 기업의 추가 금리가 오르면 경기보다 먼저 움직이는 신호와 현재 기업 자금 부담 변화가 같은 시기에 나타난다는 설명을 더 지지합니다.",
             "이 추가 금리가 내리면 현재 기업 자금 부담은 같은 방향이 아니므로 두 움직임을 분리해서 봅니다.",
             "이 추가 금리에 뚜렷한 움직임이 없으면 회사채 시장에서 같은 방향의 확인 신호는 뚜렷하지 않습니다.",
         ),
         _check(
             "AOAS",
-            "기업 자금 부담 변화가 A등급 기업까지 넓어지는지 봅니다.",
+            "A등급 회사채 금리도 함께 오르는지 봅니다.",
             "A등급 기업의 추가 금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
             "A등급 기업의 추가 금리가 내리면 기업 전반의 자금 부담 악화라는 설명은 약해집니다.",
             "A등급 기업의 추가 금리에 뚜렷한 움직임이 없으면 넓은 범위의 회사채가 함께 움직인다는 신호는 뚜렷하지 않습니다.",
@@ -261,7 +262,7 @@ def _plan_dgs30(direction: str, state: str) -> GuidancePlan:
 def _plan_dgs2(direction: str, state: str) -> GuidancePlan:
     intro = (
         f"2년 금리는 현재 '{state}'입니다. 자기 과거 움직임과 비교하면 최근에는 '{_direction_words(direction)}'입니다. "
-        "이 변화가 가까운 기준금리 예상 때문인지, 경기나 물가 우려와 함께 나타나는지 다른 지표로 구분합니다."
+        "이 변화에 가까운 기준금리 예상, 기업 신용, 물가 관련 금리 움직임이 어떻게 함께 나타나는지 확인합니다."
     )
     if direction == DOWN:
         credit_up = "회사채 추가 금리도 오르면 단순한 금리인하 기대보다 경기 둔화나 기업 자금 부담 우려를 함께 볼 필요가 있습니다."
@@ -283,10 +284,10 @@ def _plan_dgs2(direction: str, state: str) -> GuidancePlan:
             "30년 금리가 내리면 단기와 장기 금리가 엇갈리며 두 금리 차이가 줄어드는 모습입니다.",
             "30년 금리에 뚜렷한 움직임이 없으면 현재 변화가 2년 금리 쪽에 더 집중됐을 가능성을 봅니다.",
         ),
-        _check("HYOAS", "신용등급 낮은 기업의 자금 부담이 같은 시기에 변하는지 봅니다.", credit_up, credit_down, credit_flat),
+        _check("HYOAS", "HY 회사채 금리도 같은 시기에 움직이는지 봅니다.", credit_up, credit_down, credit_flat),
         _check(
             "AOAS",
-            "기업 자금 부담 변화가 A등급 기업까지 넓어지는지 봅니다.",
+            "A등급 회사채 금리도 함께 오르는지 봅니다.",
             "A등급 기업의 추가 금리도 오르면 기업 자금 부담이 더 넓은 범위에서 커지고 있다는 설명을 더 지지합니다.",
             "A등급 기업의 추가 금리가 내리면 기업 전반의 자금 부담 악화라는 설명은 약해집니다.",
             "A등급 기업의 추가 금리에 뚜렷한 움직임이 없으면 넓은 범위의 회사채가 함께 움직인다는 신호는 없습니다.",
@@ -304,7 +305,7 @@ def _plan_dgs2(direction: str, state: str) -> GuidancePlan:
 def _plan_real(direction: str, state: str) -> GuidancePlan:
     intro = (
         f"물가 영향을 뺀 10년 금리는 현재 '{state}'입니다. 자기 과거 움직임과 비교하면 최근에는 '{_direction_words(direction)}'입니다. "
-        "이 지표는 10년 구간을 이해하는 참고 자료입니다. 30년 금리 변화는 금리 탭의 ‘30년 금리’에서 먼저 봅니다."
+        "이 지표는 물가 영향을 뺀 10년 장기금리입니다. 30년 금리 변화는 금리 탭의 ‘30년 금리’에서 따로 봅니다."
     )
     return GuidancePlan(intro, (
         _check(
@@ -385,7 +386,7 @@ def render_state_guidance(key: str, row: pd.Series | dict,
     """현재 상태 → 다음에 볼 것지표 → 결과별 해석을 렌더링한다."""
     plan = build_plan(key, row, frames=frames)
     lines = [
-        "## 지금 이 상태에서 다음으로 볼 것",
+        "## 다음에 같이 볼 것",
         "",
         plan.intro,
     ]
@@ -396,12 +397,16 @@ def render_state_guidance(key: str, row: pd.Series | dict,
         ]
     lines += [
         "",
-        "아래는 **현재 결과를 먼저 해석하고**, 같은 함께 볼 지표가 다르게 움직일 경우 해석이 어떻게 달라지는지도 함께 보여줍니다.",
+        "현재 움직임과 반대 방향일 때 무엇이 달라지는지도 함께 봅니다.",
     ]
 
     for idx, check in enumerate(plan.checks, start=1):
         result, freshness, detail = _current_result(check, frames, aux_df, matrix)
-        current_text = check.branches.get(result, check.branches.get(NA, "현재 결과를 해석할 수 없습니다."))
+        if check.key in MOVEMENT_RESULTS and result in {UP, DOWN, FLAT}:
+            branch_key = {UP: "up", DOWN: "down", FLAT: "flat"}[result]
+            current_text = movement_result_cell(check.key, branch_key)
+        else:
+            current_text = check.branches.get(result, check.branches.get(NA, "현재 결과를 해석할 수 없습니다."))
         label = aux_name(check.key) if check.key in AC.AUX_SERIES else core_name(check.key, short=True)
         fresh_note = ""
         if freshness == "delayed":
@@ -423,16 +428,19 @@ def render_state_guidance(key: str, row: pd.Series | dict,
             "",
             f"> {current_text}",
             "",
-            "**결과가 달라지면**",
+            "**움직임별 결과**",
         ]
         for branch, text in check.branches.items():
             if branch == NA or branch == result:
                 continue
-            branch_display = {"상승": "오르면", "하락": "내리면", "보합": "뚜렷한 변화가 없으면"}.get(branch, branch)
+            branch_key = {UP: "up", DOWN: "down", FLAT: "flat"}.get(branch)
+            branch_display = movement_label(check.key, branch_key) if branch_key else branch
+            if check.key in MOVEMENT_RESULTS and branch_key:
+                text = movement_result_cell(check.key, branch_key)
             lines.append(f"- **{branch_display}:** {text}")
 
     lines += [
         "",
-        "> 결과가 서로 다른 설명을 동시에 지지하면 하나를 억지로 고르지 않습니다. 그 경우 복수 요인 또는 판단 어려움으로 남깁니다.",
+        "> 지표들이 엇갈리면 한 방향으로 억지로 묶지 않습니다.",
     ]
     return plain_language("\n".join(lines))

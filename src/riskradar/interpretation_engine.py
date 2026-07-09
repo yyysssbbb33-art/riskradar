@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from . import axis_engine as AX
 from . import combo_rules as CR
 from .core_directions import compute_core_direction
+from .user_copy import MOVEMENT_RESULTS, movement_result_cell
 
 MAX_READINGS = 3
 
@@ -131,12 +132,32 @@ class ComboReading:
 
 def _branch(chk: CR.Check, direction: str):
     if direction == CR.UP:
-        return chk.up, chk.supports_up, chk.weakens_up
-    if direction == CR.DOWN:
-        return chk.down, chk.supports_down, chk.weakens_down
-    if direction == CR.FLAT:
-        return chk.flat, chk.supports_flat, chk.weakens_flat
-    return chk.na, (), ()
+        text, supports, weakens = chk.up, chk.supports_up, chk.weakens_up
+        movement = "up"
+    elif direction == CR.DOWN:
+        text, supports, weakens = chk.down, chk.supports_down, chk.weakens_down
+        movement = "down"
+    elif direction == CR.FLAT:
+        text, supports, weakens = chk.flat, chk.supports_flat, chk.weakens_flat
+        movement = "flat"
+    else:
+        return chk.na, (), ()
+
+    # 지표별 실제 결과 문구는 user_copy를 단일 소스로 쓴다.
+    # 조합 규칙은 지지/약화 판정만 담당하고 사용자 문장은 따로 만들지 않는다.
+    if chk.key in MOVEMENT_RESULTS:
+        text = movement_result_cell(chk.key, movement)
+    return text, supports, weakens
+
+
+def _branch_map(chk: CR.Check) -> dict[str, str]:
+    if chk.key not in MOVEMENT_RESULTS:
+        return {CR.UP: chk.up, CR.DOWN: chk.down, CR.FLAT: chk.flat}
+    return {
+        CR.UP: movement_result_cell(chk.key, "up"),
+        CR.DOWN: movement_result_cell(chk.key, "down"),
+        CR.FLAT: movement_result_cell(chk.key, "flat"),
+    }
 
 
 def _build_reading(combo: CR.Combo, ctx: ReadingContext) -> ComboReading:
@@ -152,7 +173,7 @@ def _build_reading(combo: CR.Combo, ctx: ReadingContext) -> ComboReading:
             text += " (업데이트가 다소 지연된 자료입니다.)"
         checks.append(CheckResult(
             chk.key, chk.label, direction, text, freshness,
-            {CR.UP: chk.up, CR.DOWN: chk.down, CR.FLAT: chk.flat},
+            _branch_map(chk),
         ))
         supported.extend(supports)
         weakened.extend(weakens)
@@ -163,7 +184,7 @@ def _build_reading(combo: CR.Combo, ctx: ReadingContext) -> ComboReading:
     conflict = ""
     if len(supported_ids) >= 2:
         conflict = (
-            "함께 볼 지표가 서로 다른 설명을 동시에 지지합니다. 복수 요인이 함께 작용하는 국면일 수 있어 "
+            "함께 볼 지표가 서로 다른 경우를 동시에 가리킵니다. 여러 요인이 함께 움직일 수 있어 "
             "하나의 원인으로 정리하기 어렵습니다."
         )
 
@@ -171,7 +192,7 @@ def _build_reading(combo: CR.Combo, ctx: ReadingContext) -> ComboReading:
     if any(c.direction == CR.NA for c in checks):
         uncertainty += " 일부 함께 볼 지표가 확인 불가 또는 오래된 상태라 해당 확인은 보류했습니다."
     if not supported_ids:
-        uncertainty += " 현재 함께 볼 지표만으로 상대적으로 우세한 설명을 고르기 어렵습니다."
+        uncertainty += " 현재 함께 볼 지표만으로 어느 경우가 더 중요한지 고르기 어렵습니다."
 
     return ComboReading(
         combo_id=combo.combo_id,

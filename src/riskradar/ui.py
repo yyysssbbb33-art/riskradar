@@ -20,9 +20,6 @@ from . import rate_view as RV
 from .display_text import (LABEL_1M, LABEL_3M, LABEL_3Y, LABEL_5Y, LABEL_10Y,
                            aux_name, axis_name, core_name, lens_name, plain_language, state_name)
 from .formatting import fmt_change, fmt_pct, fmt_value
-from .interpretation_cards import get_interpretation_card
-from .aux_interpretation_cards import get_aux_interpretation_card
-from .credit_lens_card import HY_BBB_CARD
 from .credit_timeline import (
     build_credit_timeline,
     render_credit_timeline_html,
@@ -43,6 +40,7 @@ from .overview_view import (
 from .monthly_view import reconstruct_history_from_chart_data, render_monthly_markdown
 from .dashboard_snapshot import DashboardSnapshot, load_dashboard_snapshot
 from .version import __version__
+from .user_copy import render_static_explainer
 
 KST = ZoneInfo(C.APP_TIMEZONE)
 
@@ -160,6 +158,100 @@ APP_CSS = r"""
 .rr-compact-table th:first-child, .rr-compact-table td:first-child { text-align:left; }
 .rr-compact-table thead th { font-size:.78rem; opacity:.68; }
 
+
+/* v0.8.1 Visual Polish: 차분한 금융 대시보드 색 체계 */
+.gradio-container {
+  --rr-blue:#4f73d9;
+  --rr-purple:#7b67c8;
+  --rr-amber:#d68b1f;
+  --rr-red:#cf5b5b;
+  --rr-teal:#2f9a8a;
+  --rr-green:#3a9565;
+  --rr-slate:#718096;
+  background:color-mix(in srgb, var(--background-fill-secondary) 38%, var(--background-fill-primary));
+}
+.rr-app-head { padding:10px 2px 4px; }
+.rr-app-head h1 { letter-spacing:-.035em; }
+.rr-app-head strong { color:var(--rr-blue); font-size:.82rem; }
+.rr-section-title h2 { letter-spacing:-.02em; }
+.rr-section-title > span, .rr-muted, .rr-info-box { color:var(--body-text-color-subdued); }
+
+.rr-domain-card, .rr-event-card, .rr-credit-tile, .rr-metric-card, .rr-core-card, .rr-panel, .rr-rate-panel {
+  box-shadow:0 5px 18px rgba(20,32,55,.045);
+  transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.rr-domain-card:hover, .rr-event-card:hover, .rr-credit-tile:hover, .rr-metric-card:hover, .rr-core-card:hover {
+  transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(20,32,55,.075);
+}
+.rr-domain-credit { border-top:3px solid color-mix(in srgb, var(--rr-amber) 72%, transparent); }
+.rr-domain-rate { border-top:3px solid color-mix(in srgb, var(--rr-blue) 72%, transparent); }
+.rr-domain-vol { border-top:3px solid color-mix(in srgb, var(--rr-purple) 72%, transparent); }
+
+.rr-state-quiet { border-color:color-mix(in srgb, var(--rr-slate) 24%, var(--border-color-primary)); }
+.rr-state-watch {
+  border-color:color-mix(in srgb, var(--rr-amber) 58%, var(--border-color-primary));
+  background:linear-gradient(145deg, color-mix(in srgb, var(--rr-amber) 9%, var(--background-fill-primary)), var(--background-fill-primary) 62%);
+}
+.rr-state-hot {
+  border-color:color-mix(in srgb, var(--rr-red) 64%, var(--border-color-primary));
+  background:linear-gradient(145deg, color-mix(in srgb, var(--rr-red) 10%, var(--background-fill-primary)), var(--background-fill-primary) 64%);
+}
+.rr-state-easing {
+  border-color:color-mix(in srgb, var(--rr-teal) 58%, var(--border-color-primary));
+  background:linear-gradient(145deg, color-mix(in srgb, var(--rr-teal) 9%, var(--background-fill-primary)), var(--background-fill-primary) 64%);
+}
+.rr-state-done {
+  border-color:color-mix(in srgb, var(--rr-green) 55%, var(--border-color-primary));
+  background:linear-gradient(145deg, color-mix(in srgb, var(--rr-green) 8%, var(--background-fill-primary)), var(--background-fill-primary) 64%);
+}
+.rr-state-watch .rr-domain-state, .rr-state-watch .rr-core-state, .rr-state-watch .rr-credit-tile-state, .rr-state-watch .rr-metric-state { color:var(--rr-amber); }
+.rr-state-hot .rr-domain-state, .rr-state-hot .rr-core-state, .rr-state-hot .rr-credit-tile-state, .rr-state-hot .rr-metric-state { color:var(--rr-red); }
+.rr-state-easing .rr-domain-state, .rr-state-easing .rr-core-state, .rr-state-easing .rr-credit-tile-state, .rr-state-easing .rr-metric-state { color:var(--rr-teal); }
+.rr-state-done .rr-domain-state, .rr-state-done .rr-core-state, .rr-state-done .rr-credit-tile-state, .rr-state-done .rr-metric-state { color:var(--rr-green); }
+
+.rr-domain-metric b, .rr-credit-tile-value, .rr-metric-value, .rr-core-value { letter-spacing:-.035em; }
+.rr-domain-state, .rr-credit-tile-state, .rr-metric-state, .rr-core-state {
+  display:inline-flex;
+  width:fit-content;
+  align-items:center;
+  border-radius:999px;
+  padding:3px 7px;
+  background:color-mix(in srgb, currentColor 7%, transparent);
+}
+.rr-domain-state { margin-top:8px; }
+.rr-core-state { max-width:58%; }
+.rr-credit-tile-change, .rr-metric-change, .rr-core-change, .rr-domain-change { color:var(--body-text-color-subdued); }
+.rr-credit-scope {
+  border-left:3px solid color-mix(in srgb, var(--rr-amber) 55%, transparent);
+  padding:8px 10px;
+  background:color-mix(in srgb, var(--rr-amber) 5%, transparent);
+  border-radius:0 10px 10px 0;
+}
+.rr-credit-lens-line { border:1px solid color-mix(in srgb, var(--rr-amber) 22%, var(--border-color-primary)); }
+.rr-chip { box-shadow:0 3px 10px rgba(20,32,55,.035); }
+.rr-chip strong { color:var(--rr-blue); }
+.rr-event-card { border-left:4px solid color-mix(in srgb, var(--rr-blue) 68%, transparent); }
+.rr-event-title { letter-spacing:-.015em; }
+.rr-count { color:var(--rr-blue); background:color-mix(in srgb, var(--rr-blue) 10%, var(--background-fill-secondary)); }
+
+.rr-compact-table { border:1px solid var(--border-color-primary); border-radius:12px; overflow:hidden; }
+.rr-compact-table thead th {
+  background:color-mix(in srgb, var(--rr-blue) 7%, var(--background-fill-secondary));
+  color:var(--body-text-color-subdued);
+  opacity:1;
+}
+.rr-compact-table tbody tr:last-child th, .rr-compact-table tbody tr:last-child td { border-bottom:none; }
+.rr-compact-table tbody tr:hover { background:color-mix(in srgb, var(--rr-blue) 4%, transparent); }
+.rr-rate-fill.rr-rate-up, .rr-rate-up .rr-rate-fill { color:var(--rr-amber); }
+.rr-rate-fill.rr-rate-down, .rr-rate-down .rr-rate-fill { color:var(--rr-teal); }
+.rr-curve-pair > div:first-child { border-left:3px solid color-mix(in srgb, var(--rr-purple) 60%, transparent); }
+.rr-curve-pair > div:last-child { border-left:3px solid color-mix(in srgb, var(--rr-blue) 60%, transparent); }
+.rr-technical-term { padding:3px 7px; border-radius:999px; background:var(--background-fill-secondary); }
+
+.rr-detail-accordion { border-radius:14px !important; overflow:hidden; }
+.rr-detail-accordion > * { border-color:color-mix(in srgb, var(--rr-blue) 14%, var(--border-color-primary)) !important; }
+
 /* 핵심 6개: desktop 3x2, mobile 2x3 */
 .rr-core-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:8px 0 10px; }
 .rr-core-card { border:1px solid var(--border-color-primary); border-radius:14px; padding:12px; min-width:0; background:var(--background-fill-primary); }
@@ -236,6 +328,8 @@ _UI_DATA_COMPATIBLE_VERSIONS = {
     "0.7.4": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4"},
     # v0.8.0은 금리 탭·수치 카드·날짜 선택 비교를 추가하지만 캐시 schema는 그대로다.
     "0.8.0": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0"},
+    # v0.8.1은 표현·상세 배치·디자인만 바꾸며 화면용 캐시 schema는 그대로다.
+    "0.8.1": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1"},
 }
 
 
@@ -298,14 +392,14 @@ EASY_GLOSSARY = r"""
 | 화면 이름 | 쉽게 말하면 | 숫자가 오르면 |
 |---|---|---|
 | **신용등급 낮은 기업의 추가 금리** | 신용등급이 낮은 기업이 국채보다 더 얹어줘야 하는 금리 | 시장이 신용등급 낮은 기업에 더 높은 금리를 요구함 |
-| **투자등급 경계 기업의 추가 금리** | 투자등급 중 가장 낮은 쪽 기업이 더 얹어줘야 하는 금리 | 부담이 저신용 기업을 넘어 투자등급 경계선까지 이어지는지 확인 |
-| **A등급 기업의 추가 금리** | 투자등급 경계를 넘어 A등급 기업도 더 얹어줘야 하는 금리 | 회사채 부담 변화가 투자등급 안쪽까지 넓어지는지 확인 |
-| **기업 신용도에 따른 단기자금 금리 차이** | 신용도가 낮은 기업과 높은 기업의 30일 자금조달 금리 차이 | 단기 기업자금시장에서도 신용도 차별이 커지는 방향 |
+| **투자등급 경계 기업의 추가 금리** | 투자등급 중 가장 낮은 쪽 기업이 더 얹어줘야 하는 금리 | 오르면 BBB 회사채 금리와 BBB 기업의 조달비용이 높아짐 |
+| **A등급 기업의 추가 금리** | 투자등급 경계를 넘어 A등급 기업도 더 얹어줘야 하는 금리 | A등급 회사채 금리와 우량 기업의 조달비용도 올라가는지 확인 |
+| **기업 신용도에 따른 단기자금 금리 차이** | 신용도가 낮은 기업과 높은 기업의 30일 자금조달 금리 차이 | 신용도가 낮은 기업의 단기 조달금리가 우량 기업보다 더 높아짐 |
 | **10년 일반·물가연동 국채금리 차이** | 10년 일반 국채와 물가연동 국채의 금리 차이 | 시장의 물가 기대·물가 위험·채권 수요와 공급 등이 섞인 금리 차이가 커지는 방향 |
-| **10년 장기채 추가 보상** | 장기채를 오래 보유하기 위해 시장이 요구하는 추가 보상의 모형 추정치 | 오르면 장기채를 오래 들고 있기 위해 더 많은 보상을 요구하는 방향 |
+| **10년 장기채 추가 보상** | 장기채를 오래 보유하기 위해 시장이 요구하는 추가 보상의 모형 추정치 | 오르면 10년·30년 장기금리를 끌어올리는 요인 |
 | **미국 금융시장 전반의 자금 사정** | 여러 시장과 금융기관을 한꺼번에 본 외부 참고 지표 | 전반적으로 돈을 빌리고 위험을 감수하기가 더 어려워지는 방향 |
 | **미국 금융시장 전반의 불안** | 여러 금융시장이 함께 불안해지는지 본 외부 참고 지표 | 시장 전반의 불안이 높아지는 방향 |
-| **물가 영향을 뺀 10년 금리** | 물가연동 10년 국채에서 계산한 실질금리 | 10년 구간의 실질금리 부담이 커지는 방향 |
+| **물가 영향을 뺀 10년 금리** | 물가연동 10년 국채에서 계산한 실질금리 | 10년·30년 장기금리를 끌어올리고 장기 자산의 할인율을 높이는 요인 |
 
 `추가 금리`는 기업이 실제로 내는 대출금리 자체가 아닙니다. **같은 기간의 미국 국채보다 회사채가 얼마나 더 높은 금리를 요구받는지**를 뜻합니다.
 """
@@ -313,17 +407,17 @@ EASY_GLOSSARY = r"""
 HISTORY_HELP = r"""
 ### 지난 30일 흐름 읽는 법
 
-최신 캐시에 이미 들어 있는 **과거 FRED 시계열**로 지난 30일을 즉석에서 다시 구성합니다. 그래서 앱을 오늘 처음 설치했거나 매일 스냅샷을 저장하지 않았어도, 핵심 6개 지표의 한 달 흐름을 바로 볼 수 있습니다. 기업 신용 범위·지속은 최신 캐시에 저장된 HY·BBB·A·CP 경로를 별도로 읽습니다.
+최신 캐시에 이미 들어 있는 **과거 FRED 시계열**로 지난 30일을 즉석에서 다시 구성합니다. 그래서 앱을 오늘 처음 설치했거나 매일 스냅샷을 저장하지 않았어도, 핵심 6개 지표의 한 달 흐름을 바로 볼 수 있습니다. 기업 신용 변화는 최신 캐시에 저장된 HY·BBB·A·CP 경로를 별도로 읽습니다.
 
-**한 달 사이 무엇이 달라졌는지, 한때 크게 움직였다가 되돌아온 것은 무엇인지, 계속 이어지는 변화는 무엇인지**를 함께 봅니다. 시작값과 현재값만 비교하지 않습니다.
+**한 달 사이 무엇이 달라졌는지, 한때 크게 움직였다가 되돌아온 것은 무엇인지, 현재 남아 있는 추세는 무엇인지**를 함께 봅니다. 시작값과 현재값만 비교하지 않습니다.
 
 > 날짜는 RiskRadar 저장일이 아니라 **실제 지표 관측일**입니다. 또한 당시 화면을 그대로 보존한 기록이 아니라, **현재 코드 규칙으로 과거 관측일을 다시 읽은 결과**이므로 과거 버전의 판정과는 다를 수 있습니다.
 """
 
 SYNCED_HELP = r"""
-### 같은 날짜 비교 읽는 법
+### 날짜별 지표 보기
 
-각 지표의 최신 관측일은 다를 수 있습니다. 이 탭은 모든 핵심 지표에 실제 원자료가 함께 있는 가장 최근 날짜를 골라 같은 날짜 기준으로 비교합니다.
+각 지표의 최신 관측일은 다를 수 있습니다. 핵심 6개에 실제 관측값이 모두 있는 날짜를 직접 골라 같은 날짜 기준으로 비교합니다.
 """
 
 SIGNAL_MATRIX_HELP = r"""
@@ -360,8 +454,8 @@ def _one_line_interpretation(row: pd.Series) -> str:
         if code in ("calm", "neutral"):
             return "신용등급 낮은 기업이 돈을 빌릴 때 요구받는 추가 금리는 아직 크게 벌어지지 않았습니다."
         if code == "watch":
-            return "신용등급 낮은 기업의 회사채 부담이 커지고 있습니다. BBB와 A등급 기업까지 같은 변화가 나타나는지 봅니다."
-        return "신용등급 낮은 기업의 회사채 부담이 크게 커진 방향입니다. BBB·A등급 기업과 단기 기업자금시장도 함께 움직이는지 봅니다."
+            return "HY 회사채 금리가 높은 수준입니다. BBB와 A등급 회사채 금리도 함께 오르는지 봅니다."
+        return "HY 회사채 금리가 매우 높은 수준입니다. BBB·A등급 회사채와 단기 기업자금시장도 함께 움직이는지 봅니다."
 
     if key == "T10Y3M":
         return f"현재 10년 금리와 3개월 금리의 관계는 '{state_name(code, row.get('state_label'), key=key)}'입니다. 지금의 시장 불안과는 따로 떼어 경기 흐름의 배경으로 봅니다."
@@ -371,7 +465,7 @@ def _one_line_interpretation(row: pd.Series) -> str:
     if code == "stable":
         return "최근 금리는 급격한 상승 경계 기준에 걸리지 않았습니다."
     if code == "rise_watch":
-        return "최근 금리에 상승 신호가 있습니다. 다른 만기 금리와 물가 관련 움직임을 같이 봅니다."
+        return "최근 금리가 상승 경계 기준에 걸렸습니다. 다른 만기 금리와 물가 관련 움직임을 같이 봅니다."
     return "최근 금리가 빠르게 올랐습니다. 다른 금리와 참고 지표를 함께 봅니다."
 
 
@@ -898,6 +992,14 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
     }
 
 
+def _static_guide_card(key: str) -> str:
+    if key == "HY_BBB":
+        return render_static_explainer(key, lens_name("HY_BBB"))
+    if key in AC.AUX_SERIES:
+        return render_static_explainer(key, aux_name(key))
+    return render_static_explainer(key, core_name(key))
+
+
 def build_app():
     store = cache_store.get_store()
     try:
@@ -951,25 +1053,25 @@ def build_app():
             core_cards_component = gr.HTML(initial["core_cards_all"])
             next_checks_component = gr.HTML(initial["next_checks_html"])
 
-            with gr.Accordion("왜 이렇게 봤나", open=False):
+            with gr.Accordion("왜 이렇게 봤나", open=False, elem_classes="rr-detail-accordion"):
                 evidence_balance_component = gr.Markdown(initial["evidence_balance"])
-                with gr.Accordion("전체 해석 읽기", open=False):
+                with gr.Accordion("전체 해석 읽기", open=False, elem_classes="rr-detail-accordion"):
                     today_component = gr.Markdown(initial["today"])
 
         with gr.Tab("신용"):
             credit_map_component = gr.HTML(initial["credit_map"])
             credit_timeline_component = gr.HTML(initial["credit_timeline_html"])
-            with gr.Accordion("지난 변화 기록", open=False):
+            with gr.Accordion("지난 변화 기록", open=False, elem_classes="rr-detail-accordion"):
                 past_credit_episodes_component = gr.Markdown(initial["past_credit_episodes_compact"])
-            with gr.Accordion("신용 변화 상세", open=False):
+            with gr.Accordion("신용 변화 상세", open=False, elem_classes="rr-detail-accordion"):
                 credit_component = gr.Markdown(initial["credit"])
-            with gr.Accordion("신용 지표 설명", open=False):
-                with gr.Accordion(f"{lens_name('HY_BBB')} 설명", open=False):
-                    gr.Markdown(plain_language(HY_BBB_CARD))
-                aux_detail_components = {}
-                for key in AC.VISIBLE_AUX_ORDER:
-                    with gr.Accordion(f"{aux_name(key)} 설명", open=False):
-                        aux_detail_components[key] = gr.Markdown(
+            with gr.Accordion("신용 지표 설명", open=False, elem_classes="rr-detail-accordion"):
+                with gr.Accordion(f"{lens_name('HY_BBB')} 설명", open=False, elem_classes="rr-detail-accordion"):
+                    gr.Markdown(_static_guide_card("HY_BBB"))
+                credit_aux_detail_components = {}
+                for key in ("BBBOAS", "AOAS", "CPSPREAD"):
+                    with gr.Accordion(f"{aux_name(key)} 설명", open=False, elem_classes="rr-detail-accordion"):
+                        credit_aux_detail_components[key] = gr.Markdown(
                             initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
                         )
 
@@ -985,7 +1087,21 @@ def build_app():
             gr.Markdown("## 장기금리 참고")
             rate_reference_component = gr.HTML(initial["rate_reference_html"])
 
-            with gr.Accordion("금리 설명·주의사항", open=False):
+            with gr.Accordion("금리 지표 설명", open=False, elem_classes="rr-detail-accordion"):
+                rate_core_detail_components = {}
+                for key in ("DGS30", "DGS2", "DFII10", "T10Y3M"):
+                    with gr.Accordion(f"{core_name(key, short=True)} 설명", open=False, elem_classes="rr-detail-accordion"):
+                        rate_core_detail_components[key] = gr.Markdown(
+                            initial["details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
+                rate_aux_detail_components = {}
+                for key in ("BREAKEVEN", "TERMPREM"):
+                    with gr.Accordion(f"{aux_name(key)} 설명", open=False, elem_classes="rr-detail-accordion"):
+                        rate_aux_detail_components[key] = gr.Markdown(
+                            initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
+
+            with gr.Accordion("금리 설명·주의사항", open=False, elem_classes="rr-detail-accordion"):
                 rate_notes_component = gr.HTML(initial["rate_notes_html"])
 
         with gr.Tab("흐름"):
@@ -999,8 +1115,8 @@ def build_app():
             selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
             history_state = gr.State(initial["history"])
             chart_data_state = gr.State(initial["chart_data"])
-            with gr.Accordion("선택 지표 설명", open=False):
-                interpretation_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
+            with gr.Accordion("선택 지표 설명", open=False, elem_classes="rr-detail-accordion"):
+                interpretation_card = gr.Markdown(_static_guide_card(default_key))
             hist_plot = gr.LinePlot(
                 value=initial["history_plot"], x="날짜", y="최신값",
                 title="선택 지표의 지난 30일 값 변화",
@@ -1018,7 +1134,7 @@ def build_app():
                 history = history if isinstance(history, pd.DataFrame) else pd.DataFrame(history or [])
                 chart_data = chart_data if isinstance(chart_data, pd.DataFrame) else pd.DataFrame(chart_data or [])
                 return (
-                    plain_language(get_interpretation_card(key)),
+                    _static_guide_card(key),
                     _history_plot_data(history, key),
                     _history_table(history, key),
                     _chart_data({"chart_data": chart_data}, key),
@@ -1060,17 +1176,23 @@ def build_app():
         with gr.Tab("설명"):
             gr.Markdown(GUIDE_INTRO)
             guide_selector = gr.Dropdown(choices=guide_choices, value=default_key, label="상세 설명을 볼 지표")
-            guide_card = gr.Markdown(plain_language(get_interpretation_card(default_key)))
+            guide_card = gr.Markdown(_static_guide_card(default_key))
 
             def _guide_card(key):
-                if key == "HY_BBB":
-                    return plain_language(HY_BBB_CARD)
-                if key in AC.AUX_SERIES:
-                    return plain_language(get_aux_interpretation_card(key))
-                return plain_language(get_interpretation_card(key))
+                return _static_guide_card(key)
 
             guide_selector.change(fn=_guide_card, inputs=guide_selector, outputs=guide_card)
-            gr.Markdown(plain_language(RELATIONSHIP_GUIDE))
+
+            with gr.Accordion("시장 전체 참고 지표", open=False, elem_classes="rr-detail-accordion"):
+                market_reference_components = {}
+                for key in ("NFCI", "STLFSI"):
+                    with gr.Accordion(f"{aux_name(key)} 설명", open=False, elem_classes="rr-detail-accordion"):
+                        market_reference_components[key] = gr.Markdown(
+                            initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
+
+            with gr.Accordion("지표를 함께 보는 법", open=False, elem_classes="rr-detail-accordion"):
+                gr.Markdown(plain_language(RELATIONSHIP_GUIDE))
 
         reload_outputs = [
             data_health_component,
@@ -1101,7 +1223,10 @@ def build_app():
             credit_timeline_component,
             past_credit_episodes_component,
             credit_component,
-            *[aux_detail_components[k] for k in AC.VISIBLE_AUX_ORDER],
+            *[credit_aux_detail_components[k] for k in ("BBBOAS", "AOAS", "CPSPREAD")],
+            *[rate_core_detail_components[k] for k in ("DGS30", "DGS2", "DFII10", "T10Y3M")],
+            *[rate_aux_detail_components[k] for k in ("BREAKEVEN", "TERMPREM")],
+            *[market_reference_components[k] for k in ("NFCI", "STLFSI")],
             history_source_component,
             monthly_component,
             history_state,
@@ -1147,7 +1272,10 @@ def build_app():
                 payload["credit_timeline_html"],
                 payload["past_credit_episodes_compact"],
                 payload["credit"],
-                *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in AC.VISIBLE_AUX_ORDER],
+                *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("BBBOAS", "AOAS", "CPSPREAD")],
+                *[payload["details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("DGS30", "DGS2", "DFII10", "T10Y3M")],
+                *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("BREAKEVEN", "TERMPREM")],
+                *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("NFCI", "STLFSI")],
                 payload["history_source"],
                 payload["monthly"],
                 payload["history"],

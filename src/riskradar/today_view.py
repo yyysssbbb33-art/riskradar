@@ -53,7 +53,7 @@ def _fmt_change(row) -> str:
 
 _AUX_GROUPS = [
     ("10년 구간 참고 자료", ("BREAKEVEN", "TERMPREM")),
-    ("기업 신용 부담이 어디에서 나타나나", ("BBBOAS", "AOAS")),
+    ("기업 신용", ("BBBOAS", "AOAS")),
     ("단기 자금시장도 영향을 받고 있나", ("CPSPREAD",)),
     ("외부 참고 지표", ("NFCI", "STLFSI")),
 ]
@@ -121,7 +121,7 @@ def _aux_section(aux_df: pd.DataFrame) -> str:
 
     lines = [
         "### 함께 보는 참고 지표",
-        "함께 볼 지표는 10년 금리 구간의 참고 신호, 회사채 부담이 나타나는 곳, 단기 자금시장 변화를 구분할 때 씁니다. 외부 참고 지표는 공식 종합 지표가 같은 방향인지 마지막에 확인합니다. 어느 쪽도 핵심 상태에 점수처럼 더하지 않습니다.",
+        "금리·회사채·단기자금 지표를 함께 봅니다. 외부 참고 지표는 마지막에 따로 확인하며 핵심 상태에 점수처럼 더하지 않습니다.",
         "",
     ]
     old_name_to_key = {
@@ -141,7 +141,7 @@ def _aux_section(aux_df: pd.DataFrame) -> str:
         if not present:
             continue
         lines += [f"#### {title}"]
-        if title == "기업 신용 부담이 어디에서 나타나나":
+        if title == "기업 신용":
             lines.append("핵심 지표인 신용등급이 낮은 기업의 추가 금리(HY OAS)와 함께 봅니다.")
         elif title == "외부 참고 지표":
             lines.append("아래 지표는 RiskRadar 해석 엔진에 넣지 않고, 공식 기관의 종합 지표가 같은 방향을 가리키는지만 참고합니다.")
@@ -160,15 +160,15 @@ def _credit_episode_section(dq: dict) -> str:
     vix = credit.get("vix_context") or {}
     state = str(episode.get("state", "none"))
     if not current:
-        return "### 기업 신용 변화 흐름\n현재 캐시에는 기업 신용 범위·지속 결과가 없습니다."
+        return "### 기업 신용\n현재 기업 신용 상태를 확인할 수 없습니다."
 
     lines = [
-        "### 기업 신용 변화 흐름",
-        "이 부분은 누가 먼저였는지 추정하지 않고, **어느 시장에서 변화가 나타나고 현재 무엇이 남아 있는지**를 봅니다.",
+        "### 기업 신용",
+        "HY·BBB·A·CP 중 **어디가 움직이고 있는지** 봅니다.",
         "",
         "| 항목 | 현재 |",
         "|---|---|",
-        f"| 변화 흐름 | {episode.get('state_label', '현재 변화 흐름 없음')} |",
+        f"| 현재 상태 | {episode.get('state_label', '현재 변화 없음')} |",
         f"| 현재 범위 | {current.get('scope_text', '확인 불가')} |",
     ]
     if episode.get("started_at"):
@@ -178,7 +178,7 @@ def _credit_episode_section(dq: dict) -> str:
     if episode.get("prior_residual_nodes"):
         lines.append("- **이전 변화의 영향:** 이전 변화가 완전히 사라지기 전에 새 변화가 시작됐습니다.")
 
-    lines += ["", "#### 실제 시장별 현재 상태", "", "| 시장 | 상태 | 확인·잔존 |", "|---|---|---|"]
+    lines += ["", "#### 실제 시장별 현재 상태", "", "| 시장 | 상태 | 시작·남은 변화 |", "|---|---|---|"]
     for key in ("HY", "BBB", "A", "CP"):
         row = nodes.get(key) or {}
         if not row.get("available"):
@@ -214,7 +214,7 @@ def _credit_episode_section(dq: dict) -> str:
         ]
     lines += [
         "",
-        "> HY와 BBB의 상대 차이는 별도 시장이 아니라 두 시장의 움직임 차이를 보는 해석 기준입니다. 기업 신용 범위 엔진에서 별도 시장으로 두 번 세지 않습니다.",
+        "> HY−BBB는 별도 시장이 아니라 두 시장의 금리 차이입니다. 기업 신용 상태에서 별도 시장으로 다시 세지 않습니다.",
     ]
     return "\n".join(lines)
 
@@ -293,7 +293,7 @@ def _reading_block(reading: dict) -> str:
     ]
     for eid, text in explanations.items():
         if eid in supported:
-            tag = "**지금 데이터와 잘 맞음**"
+            tag = "**현재 함께 보임**"
         elif eid in weakened:
             tag = "지금 데이터와 덜 맞음"
         else:
@@ -318,30 +318,30 @@ def _reading_block(reading: dict) -> str:
             if direction != check.get("direction")
         ]
         if alternatives:
-            lines.append("  - **결과가 달라지면**")
+            lines.append("  - **다르게 움직이면**")
             for direction, text in alternatives:
                 lines.append(f"    - **{_DIR_MARK.get(direction, direction)}:** {plain_language(text)}")
 
     if supported:
-        lines += ["", "### 지금 데이터와 더 잘 맞는 설명"]
+        lines += ["", "### 현재 함께 보이는 점"]
         for eid in supported:
             if eid in explanations:
                 lines.append(f"- {explanations[eid]}")
     else:
         lines += [
             "",
-            "### 지금 데이터와 더 잘 맞는 설명",
-            "현재 확인 지표만으로 한 설명이 뚜렷하게 앞선다고 보기 어렵습니다.",
+            "### 현재 함께 보이는 점",
+            "현재 확인 지표만으로 어느 경우가 더 중요한지 고르기 어렵습니다.",
         ]
 
     if weakened:
-        lines += ["", "### 지금 데이터와 덜 맞는 설명"]
+        lines += ["", "### 반대로 움직이는 점"]
         for eid in weakened:
             if eid in explanations:
                 lines.append(f"- {explanations[eid]}")
 
     if reading.get("conflict"):
-        lines += ["", "### 서로 다른 설명을 가리키는 부분", f"⚠️ {plain_language(reading['conflict'])}"]
+        lines += ["", "### 엇갈리는 부분", f"⚠️ {plain_language(reading['conflict'])}"]
 
     lines += ["", "### 아직 정하기 어려운 부분", plain_language(reading["uncertainty"])]
     return "\n".join(lines)
@@ -368,12 +368,12 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
         lines += [
             "",
             "## 기업 신용",
-            f"- **변화 흐름:** {episode.get('state_label', '현재 변화 흐름 없음')}",
-            f"- **변화 범위:** {current.get('scope_text', '확인 불가')}",
+            f"- **현재 상태:** {episode.get('state_label', '현재 변화 없음')}",
+            f"- **움직이는 시장:** {current.get('scope_text', '확인 불가')}",
         ]
         lens_label = str(lens.get("label") or "")
         if lens_label and lens_label != "확인 불가":
-            lines.append(f"- **저신용 기업 쪽 상대 부담:** {lens_label}")
+            lines.append(f"- **HY−BBB:** {lens_label}")
 
     axes = dq.get("axes") or {}
     if axes:
@@ -405,11 +405,11 @@ def render_today_summary_markdown(dq: dict, aux_df: pd.DataFrame | None = None) 
             supported = set(reading.get("supported_ids") or [])
             best = [text for eid, text in explanations.items() if eid in supported]
             if best:
-                lines.append(f"  - 지금 데이터와 더 잘 맞는 설명: {best[0]}")
+                lines.append(f"  - 현재 함께 보이는 점: {best[0]}")
 
     lines += [
         "",
-        "> 전체 근거, 함께 볼 지표 결과, 결과가 달라질 때의 해석은 아래 아코디언에서 볼 수 있습니다.",
+        "> 자세한 수치와 움직임별 결과는 신용·금리 탭에서 볼 수 있습니다.",
     ]
     return "\n".join(lines)
 
@@ -419,7 +419,7 @@ def render_today_markdown(dq: dict, aux_df: pd.DataFrame | None) -> str:
     parts = [
         "# 오늘의 해석",
         "",
-        "오늘 데이터에서 **어느 부분이 움직였는지**, 그리고 함께 본 지표가 여러 가능한 설명 중 무엇과 더 잘 맞는지 보여줍니다.",
+        "오늘 데이터에서 **어느 부분이 움직였는지**와 다른 시장이 같은 방향인지 보여줍니다.",
         "",
         _credit_episode_section(dq),
         "",

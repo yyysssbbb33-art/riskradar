@@ -12,9 +12,9 @@ import pandas as pd
 from .display_text import (LABEL_1M, LABEL_3M, LABEL_5Y, LABEL_10Y,
                            core_name, plain_language, state_name)
 from .formatting import fmt_change, fmt_pct, fmt_value
-from .interpretation_cards import get_interpretation_card
 from .external_guidance import render_external_guidance
 from .state_guidance import render_state_guidance
+from .user_copy import indicator_caution, indicator_summary, render_movement_table
 
 
 # 어떤 조합이 어떤 핵심지표와 직접 연결되는지 명시적으로 관리한다.
@@ -65,7 +65,7 @@ def _linked_combo_markdown(data_quality: dict | None, key: str) -> str:
             "이는 지표가 중요하지 않다는 뜻이 아니라, 현재 정의된 조합 규칙에서 별도 패턴이 탐지되지 않았다는 뜻입니다."
         )
 
-    lines = ["### 이 지표와 함께 나타난 흐름"]
+    lines = ["### 같이 나타난 움직임"]
     for reading in readings:
         label = plain_language(str(reading.get("label", "현재 조합")))
         observed = plain_language(str(reading.get("observed", "")))
@@ -84,15 +84,15 @@ def _linked_combo_markdown(data_quality: dict | None, key: str) -> str:
         ]
 
         if supported:
-            lines.append("- **지금 데이터와 더 잘 맞는 설명:** " + " / ".join(supported))
+            lines.append("- **현재 함께 보이는 점:** " + " / ".join(supported))
         else:
-            lines.append("- **지금 데이터와 더 잘 맞는 설명:** 같이 본 지표만으로 한 설명이 뚜렷하게 앞선다고 보기 어렵습니다.")
+            lines.append("- **현재 함께 보이는 점:** 같이 본 지표만으로 어느 경우가 더 중요한지 고르기 어렵습니다.")
         if weakened:
-            lines.append("- **지금 데이터와 덜 맞는 설명:** " + " / ".join(weakened))
+            lines.append("- **반대로 움직이는 점:** " + " / ".join(weakened))
         if reading.get("conflict"):
-            lines.append(f"- **서로 다른 설명을 가리키는 부분:** {reading['conflict']}")
+            lines.append(f"- **엇갈리는 부분:** {reading['conflict']}")
 
-    lines.append("\n같이 본 지표가 다르게 움직일 때의 해석은 **오늘의 해석** 탭에서 더 자세히 볼 수 있습니다.")
+    lines.append("\n같이 본 지표가 엇갈리면 한 방향으로 억지로 묶지 않습니다.")
     return "\n".join(lines)
 
 
@@ -124,18 +124,20 @@ def render_indicator_detail(
         f"| {LABEL_5Y} | {fmt_pct(r['percentile_5y'])} |",
         f"| {LABEL_10Y} | {fmt_pct(r['percentile_10y'])} |",
         "",
+        "### 무엇을 보나",
+        indicator_summary(key),
+        "",
+        "### 지금 이렇게 읽습니다",
         f"> {one_line}",
+        "",
+        render_movement_table(key),
+        "",
+        f"> **참고:** {indicator_caution(key)}" if indicator_caution(key) else "",
         "",
         render_state_guidance(key, r, frames=frames, aux_df=aux_df, matrix=matrix),
         "",
         render_external_guidance(key),
         "",
         _linked_combo_markdown(data_quality, key),
-        "",
-        "---",
-        "",
-        f"# {core_name(key)} 상세 설명",
-        "",
-        plain_language(get_interpretation_card(key)),
     ]
     return "\n".join(facts)

@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .aux_interpretation_cards import get_aux_interpretation_card
 from .display_text import aux_name, core_name, plain_language, state_name
 from .formatting import fmt_change, fmt_pct, fmt_value
+from .user_copy import indicator_summary, indicator_caution, movement_label, movement_result, movement_result_cell
 
 _FRESHNESS = {
     "normal": "최신",
@@ -35,42 +35,14 @@ _COMPANIONS: dict[str, tuple[str, ...]] = {
 }
 
 _BRANCHES: dict[str, tuple[str, str, str]] = {
-    "BREAKEVEN": (
-        "오르면 10년 일반 국채와 물가연동 국채의 금리 차이가 커집니다. 30년 금리 변화는 금리 탭의 ‘30년 금리’에서 따로 봅니다.",
-        "내리면 10년 일반 국채와 물가연동 국채의 금리 차이가 줄어듭니다. 이 변화만으로 다른 만기의 금리 움직임을 설명하지 않습니다.",
-        "뚜렷한 움직임이 없으면 10년 일반 국채와 물가연동 국채의 금리 차이도 최근 크게 달라지지 않았다는 뜻입니다.",
-    ),
-    "TERMPREM": (
-        "오르면 10년 장기채를 오래 보유하기 위해 요구되는 추가 보상 추정치가 커집니다. 이 값은 30년 금리 변화에 더하는 항목이 아닙니다.",
-        "내리면 10년 장기채 추가 보상 추정치가 줄어듭니다. 30년 금리와 같은 방향이어도 직접 원인으로 단정하지 않습니다.",
-        "뚜렷한 움직임이 없으면 10년 장기채 추가 보상 추정치도 최근 크게 달라지지 않았다는 뜻입니다.",
-    ),
-    "BBBOAS": (
-        "오르면 기업 신용 부담이 투자등급 경계선까지 이어지는지 봅니다. A등급과 단기 기업자금도 같이 움직이면 변화 범위가 더 넓습니다.",
-        "내리면 투자등급 경계선의 부담이 줄어드는 방향입니다. HY만 오르면 변화가 신용등급 낮은 기업에 더 집중됐다는 설명과 잘 맞습니다.",
-        "뚜렷한 움직임이 없으면 현재 회사채 부담 변화가 BBB까지 이어졌다고 보기는 어렵습니다.",
-    ),
-    "AOAS": (
-        "오르면 기업 자금 부담이 투자등급 경계선을 넘어 A등급 기업까지 넓어지는 방향입니다. HY와 BBB도 같이 움직이면 변화 범위가 넓다는 설명이 강해집니다.",
-        "내리면 투자등급 안쪽까지 부담이 넓어졌다는 설명은 약해집니다. HY나 BBB만 오르면 변화가 더 낮은 신용등급에 집중됐을 수 있습니다.",
-        "뚜렷한 움직임이 없으면 회사채 부담이 투자등급 안쪽까지 이어졌다고 볼 근거는 아직 약합니다.",
-    ),
-    "CPSPREAD": (
-        "오르면 신용도가 낮은 기업이 단기 자금을 빌릴 때 상대적으로 더 큰 금리 부담을 지는 방향입니다. 회사채 추가 금리도 같이 오르면 기업 자금 부담이 여러 만기로 이어지는지 봅니다.",
-        "내리면 단기 기업자금시장의 신용도 차별이 줄어드는 방향입니다. 회사채가 움직여도 단기시장까지 이어졌다는 설명은 약해질 수 있습니다.",
-        "뚜렷한 움직임이 없으면 현재 변화가 단기 기업자금시장까지 이어졌다고 보기는 어렵습니다.",
-    ),
-    "NFCI": (
-        "오르면 미국 전반의 금융여건이 어려워지는 방향입니다. RiskRadar의 여러 시장 지표도 같은 방향이면 외부 참고 지표와 같은 그림인지 봅니다.",
-        "내리면 전반적인 자금 사정이 느슨해지는 방향입니다. 특정 시장만 움직인다면 변화가 넓게 이어지지 않았을 가능성을 봅니다.",
-        "뚜렷한 움직임이 없으면 넓은 금융여건이 최근 크게 바뀌었다는 외부 확인은 약합니다.",
-    ),
-    "STLFSI": (
-        "오르면 여러 금융시장의 불안이 함께 높아지는 방향입니다. VIX·회사채·단기 기업자금 지표도 같은 방향이면 더 넓은 시장 불안이라는 설명과 잘 맞습니다.",
-        "내리면 금융시장 전반의 불안이 줄어드는 방향입니다. 특정 지표만 상승한다면 변화가 그 시장에 더 집중됐을 수 있습니다.",
-        "뚜렷한 움직임이 없으면 여러 시장이 함께 불안해졌다는 외부 참고는 아직 약합니다.",
-    ),
+    key: (
+        movement_result(key, "up"),
+        movement_result(key, "down"),
+        movement_result(key, "flat"),
+    )
+    for key in ("BREAKEVEN", "TERMPREM", "BBBOAS", "AOAS", "CPSPREAD", "NFCI", "STLFSI")
 }
+
 
 
 def _find(df: pd.DataFrame | None, key: str):
@@ -97,13 +69,12 @@ def _aux_level_text(key: str, row) -> str:
 
 def _current_reading(key: str, row) -> str:
     direction = str(row.get("direction", "확인 불가"))
-    up, down, flat = _BRANCHES[key]
     if direction == "상승":
-        return up
+        return movement_result_cell(key, "up")
     if direction == "하락":
-        return down
+        return movement_result_cell(key, "down")
     if direction == "보합":
-        return flat
+        return movement_result_cell(key, "flat")
     return "현재는 방향을 확인할 수 없습니다. 자료가 충분한지와 최신성을 먼저 확인하고 다른 지표로 결론을 대신 만들지 않습니다."
 
 
@@ -160,6 +131,8 @@ def render_aux_detail(
     parts = [
         "## 지금 데이터로 보면",
         "",
+        indicator_summary(key),
+        "",
         "| 항목 | 현재 |",
         "|---|---|",
         f"| 최신값 | {value} |",
@@ -174,17 +147,13 @@ def render_aux_detail(
         "### 같이 볼 지표",
         *_companion_table(key, aux_df, matrix),
         "",
-        "### 결과가 달라지면",
-        "| 움직임 | 해석 |",
+        "### 움직임별 결과",
+        "| 움직임 | 결과적으로 볼 수 있는 변화 |",
         "|---|---|",
-        f"| 오르면 | {up} |",
-        f"| 내리면 | {down} |",
-        f"| 방향이 뚜렷하지 않으면 | {flat} |",
+        f"| {movement_label(key, 'up')} | {movement_result_cell(key, 'up')} |",
+        f"| {movement_label(key, 'down')} | {movement_result_cell(key, 'down')} |",
+        f"| {movement_label(key, 'flat')} | {movement_result_cell(key, 'flat')} |",
         "",
-        "---",
-        "",
-        f"# {aux_name(key)} 상세 설명",
-        "",
-        plain_language(get_aux_interpretation_card(key)),
+        f"> **참고:** {indicator_caution(key)}" if indicator_caution(key) else "",
     ]
     return "\n".join(parts)

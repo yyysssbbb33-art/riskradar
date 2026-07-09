@@ -37,7 +37,7 @@ def test_today_view_shows_alternative_outcome_branches():
     }
     md = render_today_markdown(dq, pd.DataFrame())
     assert "현재 상승 해석" in md
-    assert "결과가 달라지면" in md
+    assert "다르게 움직이면" in md
     assert "하락이면 이렇게 해석" in md
     assert "뚜렷한 움직임이 없으면 이렇게 해석" in md
     assert "상승이면 이렇게 해석" not in md  # 현재 branch는 위의 현재 결과에서 이미 표시

@@ -132,7 +132,7 @@ def test_rate_tab_components_are_numeric_cards_and_three_column_table():
     assert overview.count('<article class="rr-metric-card') == 4
     for text in ("4.99%", "3.88%", "2.24%", "0.42%p"):
         assert text in overview
-    assert "급격한 상승 없음" in overview and "상승 신호" in overview
+    assert "급격한 상승 없음" in overview and "상승 경계" in overview
 
     curve = render_rate_curve_html(_rate_summary())
     assert "2Y" in curve and "30Y" in curve

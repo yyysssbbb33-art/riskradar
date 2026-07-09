@@ -66,7 +66,7 @@ def test_external_guidance_explains_what_to_watch_and_how_to_branch():
     assert "미국 고용보고서" in text
     assert "무엇을 볼까" in text
     assert "앞으로의 금리 예상 하락 + 실업률 전망 상승" in text
-    assert "경기가 식을 우려 때문에 금리인하 기대가 커졌다는 설명" in text
+    assert "실업률 전망도 오르면 경기 둔화 우려가 금리인하 기대를 키우는 모습" in text
 
 
 def test_monthly_view_catches_reversion_remaining_change_and_rate_split():

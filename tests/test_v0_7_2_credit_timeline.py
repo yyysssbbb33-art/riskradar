@@ -218,7 +218,7 @@ def test_v072_ui_accepts_v071_and_v070_data_and_places_timeline_in_credit_tab():
 
     source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
     assert 'credit_timeline_component = gr.HTML(initial["credit_timeline_html"])' in source
-    assert 'with gr.Accordion("지난 변화 기록", open=False)' in source
+    assert 'with gr.Accordion("지난 변화 기록", open=False, elem_classes="rr-detail-accordion")' in source
     assert source.index('with gr.Tab("신용")') < source.index('credit_timeline_component = gr.HTML(initial["credit_timeline_html"])')
 
 

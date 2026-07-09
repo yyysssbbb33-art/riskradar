@@ -335,9 +335,9 @@ def test_telegram_keeps_results_before_credit_range_and_interpretation():
         axes=axes, readings=[], aux_df=aux_df, credit_episode=credit,
     )
     assert "투기등급-투자등급 경계 차이: 2.13%p · 약 1개월 +0.08%p" in text
-    assert "기업 신용 범위와 지속" in text
+    assert "기업 신용" in text
     assert "신용등급 낮은 기업과 투자등급 경계 기업이 참여" in text
-    assert text.index("핵심 지표") < text.index("기업 신용 범위와 지속")
-    assert text.index("기업 신용 범위와 지속") < text.index("여러 지표를 같이 보면")
+    assert text.index("핵심 지표") < text.index("기업 신용")
+    assert text.index("기업 신용") < text.index("여러 지표를 같이 보면")
     assert "신용등급 높은 기업의 추가금리" not in text
     assert len(text) <= 3900

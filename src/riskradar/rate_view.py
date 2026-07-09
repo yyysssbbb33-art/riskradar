@@ -42,6 +42,20 @@ def _pct_change_from_bp(value: Any) -> str:
         return "-"
 
 
+
+def _visual_state_class(key: str, code: str, drop: bool = False) -> str:
+    if drop:
+        return "rr-state-easing"
+    if key in {"DGS30", "DGS2", "DFII10"}:
+        return {"stable": "rr-state-quiet", "rise_watch": "rr-state-watch", "rate_shock": "rr-state-hot"}.get(code, "rr-state-quiet")
+    if key == "T10Y3M":
+        return {
+            "normal": "rr-state-quiet", "watch": "rr-state-watch",
+            "inverted": "rr-state-hot", "long_inverted": "rr-state-hot",
+            "re_normalizing": "rr-state-easing", "re_normalized": "rr-state-done",
+        }.get(code, "rr-state-quiet")
+    return "rr-state-quiet"
+
 def render_rate_overview_cards_html(matrix: pd.DataFrame | None) -> str:
     """금리 핵심 4개를 2×2 숫자 카드로 보여준다."""
     cards: list[str] = []
@@ -63,8 +77,11 @@ def render_rate_overview_cards_html(matrix: pd.DataFrame | None) -> str:
         )
         change_raw = row.get("change_20obs")
         change = fmt_change(change_raw, str(row.get("change_unit", "")))
-        hot = str(row.get("state_code", "")) in {"rise_watch", "rate_shock", "watch", "inverted", "long_inverted", "re_normalizing", "re_normalized"} or bool(row.get("drop_flag", False))
-        cls = "rr-metric-card rr-metric-card-hot" if hot else "rr-metric-card rr-metric-card-quiet"
+        code = str(row.get("state_code", ""))
+        drop = bool(row.get("drop_flag", False))
+        hot = code in {"rise_watch", "rate_shock", "watch", "inverted", "long_inverted", "re_normalizing", "re_normalized"} or drop
+        visual = _visual_state_class(key, code, drop)
+        cls = f"rr-metric-card {visual}" + (" rr-metric-card-hot" if hot else " rr-metric-card-quiet")
         cards.append(
             f'<article class="{cls}">'
             f'<div class="rr-metric-name">{escape(core_name(key, short=True))}</div>'
@@ -126,7 +143,7 @@ def render_rate_reference_cards_html(matrix: pd.DataFrame | None,
     if real is not None:
         change_raw = real.get("change_20obs")
         cards.append(
-            '<article class="rr-metric-card">'
+            '<article class="rr-metric-card rr-domain-rate">'
             '<div class="rr-metric-name">실질 10Y</div>'
             '<div class="rr-metric-subtitle">물가 영향을 뺀 10년 금리</div>'
             f'<div class="rr-metric-value">{escape(fmt_value(real.get("latest_value"), str(real.get("value_unit", ""))))}</div>'
@@ -138,7 +155,7 @@ def render_rate_reference_cards_html(matrix: pd.DataFrame | None,
     if term is not None:
         change_raw = term.get("change_1m")
         cards.append(
-            '<article class="rr-metric-card">'
+            '<article class="rr-metric-card rr-domain-rate">'
             '<div class="rr-metric-name">Term Premium</div>'
             '<div class="rr-metric-subtitle">10년 장기채 추가 보상</div>'
             f'<div class="rr-metric-value">{escape(fmt_value(term.get("latest_value"), str(term.get("value_unit", ""))))}</div>'

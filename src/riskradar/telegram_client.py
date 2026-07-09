@@ -30,9 +30,9 @@ _RATE_RESULTS = {
     "혼합 방향": "서로 다른 방향",
 }
 _DIRECTION_TEXT = {
-    "상승": "오르는 중",
-    "하락": "내리는 중",
-    "보합": "뚜렷한 변화 없음",
+    "상승": "상승",
+    "하락": "하락",
+    "보합": "큰 변화 없음",
     "확인 불가": "확인 불가",
 }
 _AUX_SHORT_NAMES = {
@@ -193,10 +193,10 @@ def _reference_level(aux_df: pd.DataFrame | None, key: str) -> str:
         return _DIRECTION_TEXT.get(str(row.get("direction", "확인 불가")), "확인 불가")
     pct = float(pct)
     if 40.0 <= pct <= 60.0:
-        return "평소 범위"
+        return "중간 구간"
     if key == "NFCI":
-        return "평소보다 어려워지는 쪽" if pct > 60 else "평소보다 느슨한 쪽"
-    return "평소보다 불안이 높은 쪽" if pct > 60 else "평소보다 불안이 낮은 쪽"
+        return "과거 기준 금융여건이 빡빡한 쪽" if pct > 60 else "과거 기준 금융여건이 느슨한 쪽"
+    return "과거 기준 시장 스트레스가 높은 쪽" if pct > 60 else "과거 기준 시장 스트레스가 낮은 쪽"
 
 
 def _aux_result_lines(aux_df: pd.DataFrame | None, keys: list[str], title: str,
@@ -243,7 +243,7 @@ def _axis_lines(axes: dict | None, matrix: pd.DataFrame) -> list[str]:
     rate_text = _RATE_RESULTS.get(str(rt.get("result")), str(rt.get("result", "확인 불가")))
     return [
         f"현재 3개 영역 중 {changed_count}개에서 눈에 띄는 움직임",
-        f"• 주식시장·기업 부담: {vc_text}",
+        f"• 주식시장·기업 신용: {vc_text}",
         f"• 경기 흐름: {cycle_text}",
         f"• 금리 움직임: {rate_text}",
     ]
@@ -277,24 +277,24 @@ def _reading_lines(readings: list[dict] | None) -> list[str]:
 
 def _credit_episode_lines(credit_episode: dict | None) -> list[str]:
     if not credit_episode:
-        return ["", "기업 신용 범위와 지속", "• 현재 변화 범위·지속 결과를 확인할 수 없음"]
+        return ["", "기업 신용", "• 현재 상태를 확인할 수 없음"]
     current = credit_episode.get("current") or {}
     episode = current.get("episode") or {}
     nodes = current.get("nodes") or {}
     lens = credit_episode.get("lens") or {}
     vix = credit_episode.get("vix_context") or {}
-    lines = ["", "기업 신용 범위와 지속"]
-    lines.append(f"• 변화 흐름: {episode.get('state_label', '확인 불가')}")
-    lines.append(f"• 범위: {current.get('scope_text', '확인 불가')}")
+    lines = ["", "기업 신용"]
+    lines.append(f"• 전체 흐름: {episode.get('state_label', '확인 불가')}")
+    lines.append(f"• 움직이는 시장: {current.get('scope_text', '확인 불가')}")
     states = []
     for node in ("HY", "BBB", "A", "CP"):
         row = nodes.get(node) or {}
         if row.get("available"):
             states.append(f"{_NODE_SHORT_NAMES[node]} {row.get('state_label', '확인 불가')}")
     if states:
-        lines.append("• 현재 상태: " + " · ".join(states))
+        lines.append("• 시장별 상태: " + " · ".join(states))
     if lens.get("available"):
-        lines.append(f"• 등급 차별: {lens.get('label', '확인 불가')}")
+        lines.append(f"• HY−BBB: {lens.get('label', '확인 불가')}")
     cp_calendar = current.get("cp_calendar_context") or {}
     if cp_calendar.get("year_end"):
         lines.append(f"• 단기자금 진단: {cp_calendar.get('note', '연말 기술요인도 확인')}")
@@ -303,7 +303,7 @@ def _credit_episode_lines(credit_episode: dict | None) -> list[str]:
     prior = episode.get("prior_residual_nodes") or []
     if prior:
         names = ", ".join(_NODE_SHORT_NAMES.get(x, x) for x in prior)
-        lines.append(f"• 이전 변화 흐름 계속되는 변화: {names}")
+        lines.append(f"• 이전 변화가 남아 있는 시장: {names}")
     return lines
 
 

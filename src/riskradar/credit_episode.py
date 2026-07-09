@@ -495,33 +495,38 @@ def _current_node_rows(node_histories: dict[str, pd.DataFrame]) -> dict[str, dic
 
 
 def _scope_text(nodes: dict[str, dict]) -> str:
-    confirmed = [n for n in NODE_ORDER if nodes.get(n, {}).get("state") in {
-        "newly_rising", "rising_persistent", "retracing"
-    }]
-    early = [n for n in NODE_ORDER if nodes.get(n, {}).get("state") == "early_change"]
-    if not confirmed:
-        if early:
-            names = "·".join(NODE_NAMES[n] for n in early)
-            return f"상승 조짐이 {names}에서 보입니다."
-        return "현재 기업 신용에서 뚜렷한 상승 신호는 없습니다."
-    if confirmed == ["HY"]:
-        text = "현재 상승 신호는 신용등급 낮은 기업의 회사채에 집중돼 있습니다."
-    else:
-        parts = []
-        if "HY" in confirmed:
-            parts.append("신용등급 낮은 기업")
-        if "BBB" in confirmed:
-            parts.append("투자등급 경계 기업")
-        if "A" in confirmed:
-            parts.append("A등급 기업")
-        text = "상승 신호가 " + "·".join(parts) + "에서 확인되고 있습니다." if parts else ""
-        if "CP" in confirmed:
-            text += (" " if text else "") + "단기 기업자금시장에서도 상승 신호가 확인됩니다."
-        else:
-            text += (" " if text else "") + "단기 기업자금시장에서는 아직 뚜렷한 상승 신호가 없습니다."
-    if early:
-        text += " " + "·".join(NODE_NAMES[n] for n in early) + "에서는 상승 조짐을 관찰 중입니다."
-    return text.strip()
+    """현재 상태를 상태별로 직접 요약한다.
+
+    `retracing`을 상승 신호로 묶지 않는다. 각 노드의 현재 상태를 그대로 말하고,
+    normal은 굳이 나열하지 않는다.
+    """
+    groups = {
+        "early_change": [],
+        "newly_rising": [],
+        "rising_persistent": [],
+        "retracing": [],
+        "normalized": [],
+    }
+    for node in NODE_ORDER:
+        state = str(nodes.get(node, {}).get("state", "normal"))
+        if state in groups:
+            groups[state].append(node)
+
+    sentences: list[str] = []
+    if groups["newly_rising"]:
+        sentences.append(f"{'·'.join(groups['newly_rising'])}에서 상승이 확인됐습니다.")
+    if groups["rising_persistent"]:
+        sentences.append(f"{'·'.join(groups['rising_persistent'])}는 높은 수준이 이어지고 있습니다.")
+    if groups["retracing"]:
+        sentences.append(f"{'·'.join(groups['retracing'])}는 앞선 상승 후 내려오기 시작했습니다.")
+    if groups["early_change"]:
+        sentences.append(f"{'·'.join(groups['early_change'])}에는 상승 조짐이 보입니다.")
+    if groups["normalized"]:
+        sentences.append(f"{'·'.join(groups['normalized'])}는 신호가 해제됐습니다.")
+
+    if not sentences:
+        return "현재 기업 신용에 새로 강조할 움직임이 없습니다."
+    return " ".join(sentences)
 
 
 def _lens_from_histories(node_frames: dict[str, pd.DataFrame], cfg: CreditEpisodeCfg) -> dict:

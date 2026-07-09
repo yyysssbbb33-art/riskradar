@@ -117,8 +117,8 @@ def _aux_df_for_view():
 def test_today_view_groups_new_indicators_by_question():
     md = render_today_markdown({}, _aux_df_for_view())
     assert "10년 구간 참고 자료" in md
-    assert "기업 신용 부담이 어디에서 나타나나" in md
-    assert "단기 자금시장도 영향을 받고 있나" in md
+    assert "기업 신용" in md
+    assert "단기 기업자금" in md
     assert "외부 참고 지표" in md
     assert "단기 기업자금 금리차(CP Spread)" in md
     assert "투자등급 경계 기업의 추가 금리(BBB OAS)" in md

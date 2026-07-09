@@ -1,7 +1,7 @@
 """지난 30일의 '과정'을 읽는 요약.
 
 시작값과 현재값만 비교하지 않는다. 기간 중 크게 움직였다가 되돌아온 경우,
-계속 이어지는 변화, 새 변화가 처음 잡힌 순서, 2년·30년 금리의 방향을 함께 본다.
+현재 남아 있는 추세, 새 변화가 처음 잡힌 날짜, 2년·30년 금리의 방향을 함께 본다.
 원인관계나 위험점수는 만들지 않는다.
 """
 from __future__ import annotations
@@ -239,7 +239,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     lines = [
         "## 지난 30일 흐름",
         "",
-        "시작값과 현재값만 비교하지 않고, **기간 중 크게 움직였다가 되돌아온 변화·계속 이어지는 변화·처음 확인된 날짜**를 함께 봅니다.",
+        "시작값과 현재값만 비교하지 않고, **기간 중 크게 움직였다가 되돌아온 변화·현재 남아 있는 추세·처음 확인된 날짜**를 함께 봅니다.",
         "",
         "> 이 요약은 원인이나 위험을 확정하지 않습니다. 지난 한 달 동안 데이터에서 실제로 나타난 경로를 정리합니다.",
     ]
@@ -272,7 +272,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
 
     # 3) 남은 변화
     remaining = [st for st in ranked if st.remaining]
-    lines += ["", "### 계속 이어지는 변화"]
+    lines += ["", "### 현재 남아 있는 추세"]
     if remaining:
         for st in remaining[:4]:
             direction = "높은" if st.net > 0 else "낮은"
@@ -281,7 +281,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
                 f"({_net_text(st.key, st.net)})."
             )
     else:
-        lines.append("- 기간 시작과 비교해 크게 계속 이어지는 변화는 뚜렷하지 않습니다.")
+        lines.append("- 기간 시작과 비교해 현재까지 남아 있는 뚜렷한 추세는 없습니다.")
 
     # 4) 새 변화가 처음 확인된 날짜. 실제 선행/후행 엔진이 아니다.
     events = _first_new_changes(history)
@@ -314,8 +314,8 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
     episode = current.get("episode") or {}
     nodes = current.get("nodes") or {}
     if current:
-        lines += ["", "### 기업 신용 범위와 지속"]
-        lines.append(f"- **변화 흐름 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}")
+        lines += ["", "### 기업 신용 변화"]
+        lines.append(f"- **현재 신용 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}")
         lines.append(f"- **현재 변화 범위:** {current.get('scope_text', '확인 불가')}")
         for key in ("HY", "BBB", "A", "CP"):
             row = nodes.get(key) or {}
@@ -340,7 +340,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
                     lines.append("- **최근 30일 상태 전환:**")
                     for dt, node, label in sorted(transitions)[-6:]:
                         lines.append(f"  - {dt.date().isoformat()} · {node}: {label}")
-        lines.append("> 이 부분은 현재 변화 범위와 지속 상태를 보여주며, 어느 시장이 원인인지나 실제 선후행을 주장하지 않습니다.")
+        lines.append("> 현재 어느 신용시장이 움직였는지 보여줍니다. 어느 시장이 원인인지나 실제 선후행을 뜻하지 않습니다.")
 
     # 7) 다음에 볼 것
     lines += ["", "### 지금부터 확인할 것"]
@@ -351,8 +351,8 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
         aoas = _aux_direction_text(aux_df, "AOAS")
         lines.append(
             f"- 주식시장 변동성은 되돌아왔지만 신용등급 낮은 기업의 추가 금리는 기간 시작보다 높습니다. "
-            f"현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. 이 지표도 오르면 기업 자금 부담이 더 넓게 이어지는 설명이 강해지고, "
-            "뚜렷한 움직임이 없거나 내리면 낮은 등급 기업 쪽에 더 집중된 변화라는 설명과 잘 맞습니다."
+            f"현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. A OAS까지 오르면 A등급 회사채 금리와 우량 기업의 조달비용도 올라갑니다. "
+            "A OAS가 오르지 않으면 현재 신용 약세는 낮은 등급 기업에 더 집중된 상태입니다."
         )
         added += 1
 
@@ -370,7 +370,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
         aoas = _aux_direction_text(aux_df, "AOAS")
         lines.append(
             f"- 신용등급 낮은 기업의 추가 금리가 한 달 동안 높아졌습니다. 현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. "
-            "이 지표도 오르면 기업 자금 부담이 넓게 이어지는 설명을, 그렇지 않으면 낮은 등급 기업 쪽에 집중된 설명을 더 확인합니다."
+            "A OAS까지 오르면 A등급 회사채 금리와 우량 기업의 조달비용도 올라갑니다. 오르지 않으면 현재 신용 약세는 낮은 등급 기업에 더 집중된 상태입니다."
         )
         added += 1
 

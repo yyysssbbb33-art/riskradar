@@ -48,12 +48,12 @@ AUX_SERIES: dict[str, AuxSeries] = {
     ),
     "BBBOAS": AuxSeries(
         "BAMLC0A4CBBB", "BBBOAS", "투자등급 경계 기업의 추가 금리",
-        "기업 자금 부담이 신용등급 낮은 기업을 넘어 투자등급 경계선까지 이어지는지 확인",
+        "BBB 기업이 국채보다 더 부담하는 추가 금리도 함께 오르는지 확인",
         "fred", 100.0, "bp", 1.0, "bp", category="credit_breadth",
     ),
     "AOAS": AuxSeries(
         "BAMLC0A3CA", "AOAS", "A등급 기업의 추가 금리",
-        "기업 자금 부담이 투자등급 경계선을 넘어 투자등급 안쪽까지 넓어지는지 확인",
+        "A등급 기업이 국채보다 더 부담하는 추가 금리까지 함께 오르는지 확인",
         "fred", 100.0, "bp", 1.0, "bp", category="credit_breadth",
     ),
     "CPSPREAD": AuxSeries(
@@ -67,7 +67,7 @@ AUX_SERIES: dict[str, AuxSeries] = {
     ),
     "NFCI": AuxSeries(
         "NFCI", "NFCI", "미국 금융시장 전반의 자금 사정",
-        "여러 시장과 금융기관을 함께 봤을 때 돈을 빌리고 위험을 감수하기가 평소보다 쉬운지 어려운지 참고",
+        "여러 시장과 금융기관을 함께 봤을 때 미국 금융여건이 빡빡한지 느슨한지 참고",
         "fred", 1.0, "지수", 1.0, "지수",
         category="external_reference", use_in_engine=False, layer="external",
         lookback_obs=4, span_guard_days=50, min_obs=100,
