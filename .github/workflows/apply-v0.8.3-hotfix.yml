@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/apply-v0.8.3-hotfix.yml
       - scripts/apply_v0_8_3_hotfix.py
+      - scripts/fix_v0_8_3_test_expectation.py
   pull_request:
     branches:
       - main
@@ -17,6 +18,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: apply-v0.8.3-hotfix
+  cancel-in-progress: true
 
 jobs:
   apply:
@@ -35,6 +40,9 @@ jobs:
 
       - name: Apply hotfix
         run: python scripts/apply_v0_8_3_hotfix.py
+
+      - name: Keep accurate BBB wording compatible with existing guide tests
+        run: python scripts/fix_v0_8_3_test_expectation.py
 
       - name: Install
         run: pip install -e '.[ui,dev]'
