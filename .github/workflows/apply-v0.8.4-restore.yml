@@ -7,6 +7,13 @@ on:
     paths:
       - scripts/apply_v0_8_4_restore.py
       - .github/workflows/apply-v0.8.4-restore.yml
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
   workflow_dispatch: {}
 
 permissions:
@@ -18,7 +25,7 @@ concurrency:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && (github.event_name != 'pull_request' || github.head_ref == 'agent/v0.8.4-restore-credit-rate-depth')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
