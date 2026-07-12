@@ -70,7 +70,7 @@ def test_credit_timeline_uses_plain_change_record_wording():
         }],
     }
     text = render_credit_timeline_markdown(data)
-    assert "최근 90일 기업 신용 변화" in text
+    assert "최근 90일 신용 변화" in text
     assert "상승 확인 전 조짐: 2026-03-01부터" in text
     assert "다음 움직임을 예측하지 않습니다" in text
     for banned in ("신용 타임라인", "확정 전 후보 신호", "독립 사건"):

@@ -237,7 +237,7 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
         )
 
     lines = [
-        "## 지난 30일 흐름",
+        "## 지난 30일 요약",
         "",
         "시작값과 현재값만 비교하지 않고, **기간 중 크게 움직였다가 되돌아온 변화·현재 남아 있는 추세·처음 확인된 날짜**를 함께 봅니다.",
         "",
@@ -282,99 +282,5 @@ def render_monthly_markdown(history: pd.DataFrame, aux_df: pd.DataFrame | None =
             )
     else:
         lines.append("- 기간 시작과 비교해 현재까지 남아 있는 뚜렷한 추세는 없습니다.")
-
-    # 4) 새 변화가 처음 확인된 날짜. 실제 선행/후행 엔진이 아니다.
-    events = _first_new_changes(history)
-    lines += ["", "### 새 변화가 처음 확인된 날짜"]
-    if events:
-        for date, key in events[:5]:
-            lines.append(f"- **{date}:** {core_name(key, short=True)}에서 경계 기준에 걸린 움직임이 처음 잡혔습니다.")
-        lines.append("\n> 날짜를 나열할 뿐 선행·후행이나 원인을 주장하지 않습니다. 지표별 판정 규칙 차이도 있기 때문입니다.")
-    else:
-        lines.append("- 기간 중 기본 상태에서 새 변화 상태로 바뀐 전환은 뚜렷하지 않습니다.")
-
-    # 5) 2Y/30Y
-    d2 = _rate_direction(stats.get("DGS2"))
-    d30 = _rate_direction(stats.get("DGS30"))
-    lines += ["", "### 2년 금리와 30년 금리는 어떻게 움직였나"]
-    if d2 == "하락" and d30 == "상승":
-        lines.append("- **2년 금리는 내리고 30년 금리는 올랐습니다.** 가까운 기준금리 예상과 장기금리를 움직이는 힘이 서로 달랐을 가능성을 확인합니다.")
-    elif d2 == "상승" and d30 == "하락":
-        lines.append("- **2년 금리는 오르고 30년 금리는 내렸습니다.** 가까운 기준금리 예상은 높아졌지만 장기 쪽은 다른 방향이었습니다.")
-    elif d2 == "상승" and d30 == "상승":
-        lines.append("- **2년·30년 금리가 함께 올랐습니다.** 단기와 장기 금리에 공통으로 작용한 요인이 있는지 확인합니다.")
-    elif d2 == "하락" and d30 == "하락":
-        lines.append("- **2년·30년 금리가 함께 내렸습니다.** 물가 부담 완화인지 경기 둔화 우려인지 회사채 추가 금리와 고용 흐름으로 구분합니다.")
-    else:
-        lines.append(f"- 2년 금리: **{d2}**, 30년 금리: **{d30}**. 한 달 전체에서 뚜렷한 공통 방향은 제한적입니다.")
-
-    # 6) 신용 범위·지속 엔진
-    credit = credit_episode or {}
-    current = credit.get("current") or {}
-    episode = current.get("episode") or {}
-    nodes = current.get("nodes") or {}
-    if current:
-        lines += ["", "### 기업 신용 변화"]
-        lines.append(f"- **현재 신용 상태:** {episode.get('state_label', '현재 변화 흐름 없음')}")
-        lines.append(f"- **현재 변화 범위:** {current.get('scope_text', '확인 불가')}")
-        for key in ("HY", "BBB", "A", "CP"):
-            row = nodes.get(key) or {}
-            if row.get("available"):
-                lines.append(f"- **{row.get('name', key)}:** {row.get('state_label', '확인 불가')}")
-        if credit_node_history is not None and not credit_node_history.empty and {"date", "node", "state"}.issubset(credit_node_history.columns):
-            ch = credit_node_history.copy()
-            ch["date"] = pd.to_datetime(ch["date"], errors="coerce")
-            ch = ch.loc[ch["date"].notna()].sort_values(["node", "date"])
-            if not ch.empty:
-                cutoff = ch["date"].max() - pd.Timedelta(days=30)
-                ch = ch.loc[ch["date"] >= cutoff]
-                transitions = []
-                for node, group in ch.groupby("node", sort=False):
-                    g = group.sort_values("date").copy()
-                    prev = g["state"].shift(1)
-                    changed_rows = g.loc[g["state"].astype(str) != prev.astype(str)]
-                    changed_rows = changed_rows.iloc[1:] if len(changed_rows) > 1 else changed_rows.iloc[0:0]
-                    for _, tr in changed_rows.tail(2).iterrows():
-                        transitions.append((pd.Timestamp(tr["date"]), str(node), str(tr.get("state_label", tr.get("state", "")))))
-                if transitions:
-                    lines.append("- **최근 30일 상태 전환:**")
-                    for dt, node, label in sorted(transitions)[-6:]:
-                        lines.append(f"  - {dt.date().isoformat()} · {node}: {label}")
-        lines.append("> 현재 어느 신용시장이 움직였는지 보여줍니다. 어느 시장이 원인인지나 실제 선후행을 뜻하지 않습니다.")
-
-    # 7) 다음에 볼 것
-    lines += ["", "### 지금부터 확인할 것"]
-    added = 0
-    vix = stats.get("VIX")
-    hy = stats.get("HYOAS")
-    if vix and vix.reverted and hy and hy.net > MATERIAL_MOVE["HYOAS"] * 0.40:
-        aoas = _aux_direction_text(aux_df, "AOAS")
-        lines.append(
-            f"- 주식시장 변동성은 되돌아왔지만 신용등급 낮은 기업의 추가 금리는 기간 시작보다 높습니다. "
-            f"현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. A OAS까지 오르면 A등급 회사채 금리와 우량 기업의 조달비용도 올라갑니다. "
-            "A OAS가 오르지 않으면 현재 신용 약세는 낮은 등급 기업에 더 집중된 상태입니다."
-        )
-        added += 1
-
-    if d2 == "하락" and d30 == "상승":
-        be = _aux_direction_text(aux_df, "BREAKEVEN")
-        tp = _aux_direction_text(aux_df, "TERMPREM")
-        lines.append(
-            f"- 2년 금리 하락·30년 금리 상승이 엇갈렸습니다. 현재 **{aux_name('BREAKEVEN')}**은 `{be}`, "
-            f"**{aux_name('TERMPREM')}**은 `{tp}`입니다. 두 값은 10년 구간을 이해하는 참고 자료이며, "
-            "30년 금리 변화는 금리 탭의 ‘30년 금리’에서 먼저 봅니다."
-        )
-        added += 1
-
-    if hy and hy.net > MATERIAL_MOVE["HYOAS"] * 0.40 and not (vix and vix.reverted):
-        aoas = _aux_direction_text(aux_df, "AOAS")
-        lines.append(
-            f"- 신용등급 낮은 기업의 추가 금리가 한 달 동안 높아졌습니다. 현재 **{aux_name('AOAS')}**은 `{aoas}`입니다. "
-            "A OAS까지 오르면 A등급 회사채 금리와 우량 기업의 조달비용도 올라갑니다. 오르지 않으면 현재 신용 약세는 낮은 등급 기업에 더 집중된 상태입니다."
-        )
-        added += 1
-
-    if added == 0:
-        lines.append("- 현재 한 달 경로만으로 특정 함께 볼 지표 하나를 우선해야 할 정도의 조합은 뚜렷하지 않습니다. 오늘의 해석과 각 지표 상세 설명을 함께 봅니다.")
 
     return plain_language("\n".join(lines))

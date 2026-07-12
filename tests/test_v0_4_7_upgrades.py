@@ -104,5 +104,5 @@ def test_monthly_view_catches_reversion_remaining_change_and_rate_split():
     text = render_monthly_markdown(history, aux_df)
     assert "한때 크게 움직였다가 되돌아온 것" in text
     assert "VIX" in text
-    assert "2년 금리는 내리고 30년 금리는 올랐습니다" in text
-    assert "A등급 기업의 추가 금리" in text
+    assert "2년 금리는 내리고 30년 금리는 올랐습니다" not in text
+    assert "현재 남아 있는 추세" in text

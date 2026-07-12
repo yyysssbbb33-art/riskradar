@@ -55,13 +55,13 @@ def test_non_guide_tabs_keep_reference_content_behind_short_closed_accordions():
 
     expected = [
         'with gr.Accordion("관리·진단", open=False)',
-        'with gr.Accordion("왜 이렇게 봤나", open=False, elem_classes="rr-detail-accordion")',
-        'with gr.Accordion("금리 설명·주의사항", open=False, elem_classes="rr-detail-accordion")',
+        'with gr.Accordion("판정 근거 자세히 보기", open=False, elem_classes="rr-detail-accordion")',
+        'with gr.Accordion("지표 뜻과 읽는 법", open=False, elem_classes="rr-detail-accordion")',
         'with gr.Accordion("지난 30일 읽는 법", open=False)',
         'with gr.Accordion("데이터 설명·주의사항", open=False)',
-        '## 날짜별 지표 보기',
+        '## 같은 날짜로 비교',
         'with gr.Accordion("표 읽는 법", open=False)',
-        'with gr.Accordion("차트 읽는 법", open=False)',
+        'with gr.Accordion("지표 뜻과 읽는 법", open=False, elem_classes="rr-detail-accordion")',
         'with gr.Accordion("함께 볼 지표 수집 상태", open=False)',
     ]
     for phrase in expected:
