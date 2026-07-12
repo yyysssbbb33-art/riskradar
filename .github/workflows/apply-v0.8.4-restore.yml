@@ -1,31 +1,23 @@
-name: apply-v0.8.4-restore
+name: finalize-v0.8.4-restore
 
 on:
   push:
     branches:
       - agent/v0.8.4-restore-credit-rate-depth
     paths:
-      - scripts/apply_v0_8_4_restore.py
       - .github/workflows/apply-v0.8.4-restore.yml
-  pull_request:
-    branches:
-      - main
-    types:
-      - opened
-      - synchronize
-      - reopened
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-v0.8.4-restore
+  group: finalize-v0.8.4-restore
   cancel-in-progress: true
 
 jobs:
-  apply:
-    if: github.actor != 'github-actions[bot]' && (github.event_name != 'pull_request' || github.head_ref == 'agent/v0.8.4-restore-credit-rate-depth')
+  finalize:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -38,8 +30,42 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Apply restoration
-        run: python scripts/apply_v0_8_4_restore.py
+      - name: Apply final UI consistency fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+
+          overview = root / 'src/riskradar/overview_view.py'
+          text = overview.read_text(encoding='utf-8')
+          old = '''        '<section class="rr-credit-visual">'\n        '<div class="rr-section-title"><h2>기업 신용</h2></div>'\n        '<div class="rr-credit-grid-2x2">'\n'''
+          new = '''        '<section class="rr-credit-visual">'\n        '<div class="rr-credit-grid-2x2">'\n'''
+          if text.count(old) != 1:
+              raise SystemExit('credit title patch target not found exactly once')
+          overview.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          context = root / 'src/riskradar/context_view.py'
+          text = context.read_text(encoding='utf-8')
+          old = '''    return (\n        '<div class="rr-context-metric">'\n        f'<div><strong>{escape(name)}</strong>{suffix}</div>'\n        f'<span>{escape(metric["value"])}</span>'\n        f'<b>{escape(_symbol(metric["raw"]))} {escape(metric["change"])}</b>'\n        '</div>'\n    )\n'''
+          new = '''    direction = "·" if not metric.get("available", True) else _symbol(metric["raw"])\n    return (\n        '<div class="rr-context-metric">'\n        f'<div><strong>{escape(name)}</strong>{suffix}</div>'\n        f'<span>{escape(metric["value"])}</span>'\n        f'<b>{escape(direction)} {escape(metric["change"])}</b>'\n        '</div>'\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit('missing metric patch target not found exactly once')
+          context.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          ui = root / 'src/riskradar/ui.py'
+          text = ui.read_text(encoding='utf-8')
+          old = '  .rr-change-list li { grid-template-columns:1fr; gap:4px; }\n'
+          new = old + '  .rr-context-grid { grid-template-columns:1fr; }\n'
+          if text.count(old) != 1:
+              raise SystemExit('mobile context patch target not found exactly once')
+          text = text.replace(old, new, 1)
+          old = '  .rr-mini-grid, .rr-metric-grid, .rr-context-grid { grid-template-columns:1fr; }\n'
+          new = '  .rr-mini-grid, .rr-metric-grid, .rr-credit-grid-2x2, .rr-context-grid { grid-template-columns:1fr; }\n'
+          if text.count(old) != 1:
+              raise SystemExit('narrow grid patch target not found exactly once')
+          ui.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Install
         run: pip install -e '.[ui,dev]'
@@ -56,16 +82,14 @@ jobs:
           print(type(app).__name__)
           PY
 
-      - name: Commit validated restoration
+      - name: Commit final restoration
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-v0.8.4-restore.yml scripts/apply_v0_8_4_restore.py
           git add \
-            README.md \
-            pyproject.toml \
-            src/riskradar/version.py \
-            src/riskradar/ui.py \
+            src/riskradar/overview_view.py \
             src/riskradar/context_view.py \
-            tests/test_credit_rate_depth.py
-          git commit -m 'Restore credit and rate context depth for v0.8.4'
+            src/riskradar/ui.py
+          git commit -m 'Finalize v0.8.4 credit and rate UI restoration'
           git push origin HEAD:agent/v0.8.4-restore-credit-rate-depth
