@@ -15,6 +15,7 @@ from .formatting import fmt_change, fmt_pct, fmt_value
 from .external_guidance import render_external_guidance
 from .state_guidance import render_state_guidance
 from .user_copy import indicator_caution, indicator_summary, render_movement_table
+from .deep_guides import guide_markdown
 
 
 # 어떤 조합이 어떤 핵심지표와 직접 연결되는지 명시적으로 관리한다.
@@ -133,6 +134,10 @@ def render_indicator_detail(
         render_movement_table(key),
         "",
         f"> **참고:** {indicator_caution(key)}" if indicator_caution(key) else "",
+        "",
+        "---",
+        "",
+        guide_markdown(key, r, matrix=matrix, aux_df=aux_df, data_quality=data_quality, one_line=one_line),
         "",
         render_state_guidance(key, r, frames=frames, aux_df=aux_df, matrix=matrix),
         "",
