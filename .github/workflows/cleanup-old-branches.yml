@@ -1,0 +1,33 @@
+name: cleanup-old-branches
+
+on:
+  push:
+    branches:
+      - codex-riskradar-work
+    paths:
+      - .github/workflows/cleanup-old-branches.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete obsolete merged branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          for branch in \
+            'codex/review-project-files-and-structure' \
+            'agent/v0.8.3-hotfix' \
+            'agent/v0.8.4-restore-credit-rate-depth' \
+            'codex/v0.8.5-deep-indicator-guides'
+          do
+            echo "Deleting ${branch}"
+            git push origin --delete "${branch}" || true
+          done
