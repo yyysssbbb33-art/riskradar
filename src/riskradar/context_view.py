@@ -56,11 +56,12 @@ def _metric(df: pd.DataFrame | None, key: str, *, aux: bool = False) -> dict[str
 
 def _metric_row(name: str, metric: dict[str, Any], note: str = "") -> str:
     suffix = f'<small>{escape(note)}</small>' if note else ""
+    direction = "·" if not metric.get("available", True) else _symbol(metric["raw"])
     return (
         '<div class="rr-context-metric">'
         f'<div><strong>{escape(name)}</strong>{suffix}</div>'
         f'<span>{escape(metric["value"])}</span>'
-        f'<b>{escape(_symbol(metric["raw"]))} {escape(metric["change"])}</b>'
+        f'<b>{escape(direction)} {escape(metric["change"])}</b>'
         '</div>'
     )
 

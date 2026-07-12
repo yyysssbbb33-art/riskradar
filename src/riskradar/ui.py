@@ -346,6 +346,7 @@ APP_CSS = r"""
   .rr-interpretation-grid { grid-template-columns:1fr; }
   .rr-mini-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .rr-change-list li { grid-template-columns:1fr; gap:4px; }
+  .rr-context-grid { grid-template-columns:1fr; }
   .rr-domain-strip { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
   .rr-domain-card { padding:10px 8px; }
   .rr-domain-metric { display:block; }
@@ -370,7 +371,7 @@ APP_CSS = r"""
 	  .rr-curve-summary { align-items:flex-start; flex-direction:column; }
 	}
 @media (max-width:420px) {
-  .rr-mini-grid, .rr-metric-grid, .rr-context-grid { grid-template-columns:1fr; }
+  .rr-mini-grid, .rr-metric-grid, .rr-credit-grid-2x2, .rr-context-grid { grid-template-columns:1fr; }
 }
 """
 
