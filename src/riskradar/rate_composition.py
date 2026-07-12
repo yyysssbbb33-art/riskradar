@@ -385,14 +385,12 @@ def render_scan_html(summary: dict | None) -> str:
         reason = escape(str(s.get("reason") or "30년 금리 움직임을 현재 확인할 수 없습니다."))
         return (
             '<section class="rr-rate-panel">'
-            '<div class="rr-section-title"><h2>30년 금리</h2></div>'
+            '<div class="rr-section-title"><h2>30Y 금리 변화 나눠보기</h2></div>'
             f'<div class="rr-empty">{reason}</div>'
             '</section>'
         )
 
     primary = s.get("primary") or {}
-    latest = s.get("latest") or {}
-    latest_level = latest.get("DGS30")
     total = primary.get("DGS30_change_bp")
     real = primary.get("DFII30_change_bp")
     gap = primary.get("INFLCOMP30_change_bp")
@@ -417,36 +415,35 @@ def render_scan_html(summary: dict | None) -> str:
         values = [abs(x) for x in (real_n, gap_n) if x is not None]
         scale = max(values or [1.0])
 
-        def row(label: str, value: Any) -> str:
+        def row(label: str, subtitle: str, value: Any) -> str:
             x = numeric(value)
             width = 4.0 if x is None or abs(x) < 0.05 else min(100.0, max(7.0, abs(x) / scale * 100.0))
             direction = _scan_direction(value)
             tone = "up" if direction == "↑" else ("down" if direction == "↓" else "flat")
             return (
                 '<div class="rr-rate-row">'
-                f'<div class="rr-rate-label"><span>{label}</span><strong>{fmt(value)} {direction}</strong></div>'
+                f'<div class="rr-rate-label"><span>{label}<small>{subtitle}</small></span><strong>{fmt(value)} {direction}</strong></div>'
                 '<div class="rr-rate-track">'
                 f'<span class="rr-rate-fill rr-rate-{tone}" style="width:{width:.1f}%"></span>'
                 '</div>'
                 '</div>'
             )
-        movement_html = row("물가 영향 제외", real) + row("국채 금리 차이", gap)
+        movement_html = row("실질 30Y", "물가 영향을 뺀 30년 금리", real) + row("30Y 국채 금리 차이", "일반·물가연동 30년 국채의 차이", gap)
     else:
         movement_html = (
             '<div class="rr-rate-opposite">'
-            f'<div><span>물가 영향 제외</span><strong>{fmt(real)} {_scan_direction(real)}</strong></div>'
-            f'<div><span>국채 금리 차이</span><strong>{fmt(gap)} {_scan_direction(gap)}</strong></div>'
+            f'<div><span>실질 30Y<small>물가 영향을 뺀 30년 금리</small></span><strong>{fmt(real)} {_scan_direction(real)}</strong></div>'
+            f'<div><span>30Y 국채 금리 차이<small>일반·물가연동 30년 국채의 차이</small></span><strong>{fmt(gap)} {_scan_direction(gap)}</strong></div>'
             '</div>'
         )
 
     curve = s.get("curve") or {}
     curve_text = escape(str(curve.get("text") or "장·단기 금리 관계는 현재 확인할 수 없습니다."))
-    level_text = "-" if latest_level is None else f"{float(latest_level):.2f}%"
     return (
         '<section class="rr-rate-panel">'
         '<div class="rr-rate-head">'
-        '<div><span>30Y</span><strong>' + escape(level_text) + '</strong></div>'
-        '<div><span>최근 1개월</span><strong class="rr-rate-total">' + escape(f'{_scan_direction(total)} {fmt(total)}') + '</strong></div>'
+        '<div><span>전체 변화</span><strong class="rr-rate-total">' + escape(f'{_scan_direction(total)} {fmt(total)}') + '</strong></div>'
+        '<div><span>비교 기간</span><strong>최근 약 1개월</strong></div>'
         '</div>'
         '<div class="rr-rate-kicker">같은 만기의 두 움직임</div>'
         + movement_html

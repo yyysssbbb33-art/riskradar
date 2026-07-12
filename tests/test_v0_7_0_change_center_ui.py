@@ -122,14 +122,14 @@ def test_evidence_balance_limits_visible_tally_and_keeps_uncertainty():
 
 def test_v074_has_five_short_tabs_and_scan_first_structure():
     source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
-    for name in ("오늘", "신용", "흐름", "비교", "설명"):
+    for name in ("현황", "신용", "금리", "흐름", "비교", "설명"):
         assert f'with gr.Tab("{name}")' in source
     for old in ("한눈에 보기", "기업 신용", "흐름과 차트", "지표 설명"):
         assert f'with gr.Tab("{old}")' not in source
     assert 'with gr.Accordion("관리·진단", open=False)' in source
     assert 'gr.Checkbox(value=True, label="변화 있는 항목만 보기")' not in source
-    assert 'domain_strip_component = gr.HTML(initial["domain_strip"])' in source
-    assert 'core_cards_component = gr.HTML(initial["core_cards_all"])' in source
+    assert 'status_cards_component = gr.HTML(initial["status_cards"])' in source
+    assert 'key_indicator_cards_component = gr.HTML(initial["key_indicator_cards"])' in source
 
 
 def test_v070_accepts_v062_data_as_its_required_ui_baseline():

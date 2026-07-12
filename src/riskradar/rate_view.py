@@ -14,6 +14,12 @@ from .display_text import core_name, state_name
 from .formatting import fmt_change, fmt_value
 
 RATE_OVERVIEW_KEYS = ("DGS30", "DGS2", "DFII10", "T10Y3M")
+RATE_SUBTITLES = {
+    "DGS30": "미국 30년 국채금리",
+    "DGS2": "미국 2년 국채금리",
+    "DFII10": "물가 영향을 뺀 10년 금리",
+    "T10Y3M": "10년·3개월 국채금리 차이",
+}
 
 
 def _row(df: pd.DataFrame | None, key: str) -> pd.Series | None:
@@ -65,9 +71,10 @@ def render_rate_overview_cards_html(matrix: pd.DataFrame | None) -> str:
             cards.append(
                 '<article class="rr-metric-card rr-metric-card-quiet">'
                 f'<div class="rr-metric-name">{escape(core_name(key, short=True))}</div>'
+                f'<div class="rr-metric-subtitle">{escape(RATE_SUBTITLES.get(key, ""))}</div>'
                 '<div class="rr-metric-value">-</div>'
                 '<div class="rr-metric-state">확인 불가</div>'
-                '<div class="rr-metric-change">· - <span>1개월</span></div>'
+                '<div class="rr-metric-change">· - <span>최근 약 1개월</span></div>'
                 '</article>'
             )
             continue
@@ -85,9 +92,10 @@ def render_rate_overview_cards_html(matrix: pd.DataFrame | None) -> str:
         cards.append(
             f'<article class="{cls}">'
             f'<div class="rr-metric-name">{escape(core_name(key, short=True))}</div>'
+            f'<div class="rr-metric-subtitle">{escape(RATE_SUBTITLES.get(key, ""))}</div>'
             f'<div class="rr-metric-value">{escape(fmt_value(row.get("latest_value"), str(row.get("value_unit", ""))))}</div>'
             f'<div class="rr-metric-state">{escape(state)}</div>'
-            f'<div class="rr-metric-change">{escape(_direction(change_raw))} {escape(change)} <span>1개월</span></div>'
+            f'<div class="rr-metric-change">{escape(_direction(change_raw))} {escape(change)} <span>최근 약 1개월</span></div>'
             '</article>'
         )
     return '<div class="rr-metric-grid rr-rate-overview-grid">' + ''.join(cards) + '</div>'
@@ -97,7 +105,7 @@ def render_rate_curve_html(summary: dict | None) -> str:
     """2년·30년 금리의 같은 기간 움직임을 숫자 중심으로 보여준다."""
     curve = (summary or {}).get("curve") or {}
     if curve.get("status") != "ok":
-        return '<section class="rr-panel"><div class="rr-section-title"><h2>금리곡선</h2></div><div class="rr-empty">현재 장·단기 금리 움직임을 확인할 수 없습니다.</div></section>'
+        return '<section class="rr-panel"><div class="rr-section-title"><h2>단기·장기 금리 관계</h2></div><div class="rr-empty">현재 장·단기 금리 움직임을 확인할 수 없습니다.</div></section>'
 
     short = curve.get("DGS2_change_bp")
     long = curve.get("DGS30_change_bp")
@@ -121,15 +129,14 @@ def render_rate_curve_html(summary: dict | None) -> str:
         "no_clear_curve_move": "장·단기 금리차 변화 작음",
     }.get(code, str(curve.get("text") or "현재 움직임 확인"))
 
-    technical_html = f'<span class="rr-technical-term">{escape(technical)}</span>' if technical else ""
     return (
         '<section class="rr-panel">'
-        '<div class="rr-section-title"><h2>금리곡선</h2><span>최근 약 1개월</span></div>'
+        '<div class="rr-section-title"><h2>단기·장기 금리 관계</h2><span>최근 약 1개월</span></div>'
         '<div class="rr-curve-pair">'
         f'<div><span>2Y</span><strong>{escape(_direction(short))} {escape(_pct_change_from_bp(short))}</strong></div>'
         f'<div><span>30Y</span><strong>{escape(_direction(long))} {escape(_pct_change_from_bp(long))}</strong></div>'
         '</div>'
-        f'<div class="rr-curve-summary"><strong>{escape(summary_text)}</strong>{technical_html}</div>'
+        f'<div class="rr-curve-summary"><strong>{escape(summary_text)}</strong></div>'
         '</section>'
     )
 
@@ -139,15 +146,15 @@ def render_rate_reference_cards_html(matrix: pd.DataFrame | None,
     """장기금리 해석에서 함께 보는 두 지표를 줄글 대신 카드로 보여준다."""
     cards: list[str] = []
 
-    real = _row(matrix, "DFII10")
-    if real is not None:
-        change_raw = real.get("change_20obs")
+    be = _row(aux_df, "BREAKEVEN")
+    if be is not None:
+        change_raw = be.get("change_1m")
         cards.append(
             '<article class="rr-metric-card rr-domain-rate">'
-            '<div class="rr-metric-name">실질 10Y</div>'
-            '<div class="rr-metric-subtitle">물가 영향을 뺀 10년 금리</div>'
-            f'<div class="rr-metric-value">{escape(fmt_value(real.get("latest_value"), str(real.get("value_unit", ""))))}</div>'
-            f'<div class="rr-metric-change">{escape(_direction(change_raw))} {escape(fmt_change(change_raw, str(real.get("change_unit", ""))))} <span>1개월</span></div>'
+            '<div class="rr-metric-name">10Y Breakeven</div>'
+            '<div class="rr-metric-subtitle">일반·물가연동 국채금리 차이</div>'
+            f'<div class="rr-metric-value">{escape(fmt_value(be.get("latest_value"), str(be.get("value_unit", ""))))}</div>'
+            f'<div class="rr-metric-change">{escape(_direction(change_raw))} {escape(fmt_change(change_raw, str(be.get("change_unit", ""))))} <span>최근 약 1개월</span></div>'
             '</article>'
         )
 
@@ -156,10 +163,10 @@ def render_rate_reference_cards_html(matrix: pd.DataFrame | None,
         change_raw = term.get("change_1m")
         cards.append(
             '<article class="rr-metric-card rr-domain-rate">'
-            '<div class="rr-metric-name">Term Premium</div>'
-            '<div class="rr-metric-subtitle">10년 장기채 추가 보상</div>'
+            '<div class="rr-metric-name">10Y Term Premium</div>'
+            '<div class="rr-metric-subtitle">장기채 추가 보상 추정치</div>'
             f'<div class="rr-metric-value">{escape(fmt_value(term.get("latest_value"), str(term.get("value_unit", ""))))}</div>'
-            f'<div class="rr-metric-change">{escape(_direction(change_raw))} {escape(fmt_change(change_raw, str(term.get("change_unit", ""))))} <span>1개월</span></div>'
+            f'<div class="rr-metric-change">{escape(_direction(change_raw))} {escape(fmt_change(change_raw, str(term.get("change_unit", ""))))} <span>최근 약 1개월</span></div>'
             '</article>'
         )
 
@@ -178,7 +185,7 @@ def render_rate_change_table_html(summary: dict | None) -> str:
     rows = [
         ("30Y", primary.get("DGS30_change_bp"), context.get("DGS30_change_bp")),
         ("실질 30Y", primary.get("DFII30_change_bp"), context.get("DFII30_change_bp")),
-        ("국채 금리 차이", primary.get("INFLCOMP30_change_bp"), context.get("INFLCOMP30_change_bp")),
+        ("30Y 국채 금리 차이", primary.get("INFLCOMP30_change_bp"), context.get("INFLCOMP30_change_bp")),
     ]
     body = ''.join(
         '<tr>'

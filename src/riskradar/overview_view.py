@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from html import escape
 from typing import Any
 
@@ -163,6 +164,259 @@ def _credit_metric(node: str, matrix: pd.DataFrame | None,
         change_raw = row.get("change_1m")
         change = fmt_change(change_raw, str(row.get("change_unit", "")))
     return value, change, _direction_symbol(change_raw)
+
+
+def _position_text(row: pd.Series | None) -> str:
+    if row is None:
+        return "비교 불가"
+    for col, label in (("percentile_3y", "최근 3년"), ("percentile_5y", "최근 5년"), ("percentile_10y", "최근 10년")):
+        try:
+            value = float(row.get(col))
+        except (TypeError, ValueError):
+            continue
+        if pd.notna(value):
+            side = "상위" if value >= 50 else "하위"
+            pct = value if value >= 50 else 100.0 - value
+            return f"{label} {side} {pct:.0f}% 구간"
+    return "비교 불가"
+
+
+def _status_name(row: pd.Series | None, key: str) -> str:
+    if row is None:
+        return "확인 불가"
+    return state_name(
+        str(row.get("state_code", "")),
+        str(row.get("state_label", "")),
+        drop=bool(row.get("drop_flag", False)),
+        key=key,
+    )
+
+
+def _change_line(row: pd.Series | None, *, aux: bool = False) -> tuple[str, str]:
+    if row is None:
+        return "·", "-"
+    raw = row.get("change_1m") if aux else row.get("change_20obs")
+    return _direction_symbol(raw), fmt_change(raw, str(row.get("change_unit", "")))
+
+
+def render_data_basis_html(status: dict | None, matrix: pd.DataFrame | None,
+                           aux_df: pd.DataFrame | None, load_errors: list[str] | None = None) -> str:
+    """시장 관측일과 운영 재조회 시각을 섞지 않고 자료 기준일만 작게 보여준다."""
+    issue_count = len(load_errors or [])
+    stale = False
+    if aux_df is not None and not aux_df.empty:
+        stale = any(str(x) in {"stale", "failed", "carried_forward"} for x in aux_df.get("staleness_label", []))
+        stale = stale or any(str(x) in {"failed", "carried_forward"} for x in aux_df.get("fetch_status", []))
+    dates: list[pd.Timestamp] = []
+    if matrix is not None and not matrix.empty and "latest_observed_date" in matrix.columns:
+        for value in matrix["latest_observed_date"].dropna().tolist():
+            try:
+                dates.append(pd.Timestamp(value))
+            except Exception:
+                pass
+    date_text = max(dates).date().isoformat() if dates else str((status or {}).get("active_cache_version") or "확인 불가")
+    if issue_count or stale:
+        return f'<div class="rr-data-basis rr-data-warning">⚠ {escape(date_text)} 시장 데이터 기준 · 데이터 확인 필요</div>'
+    return f'<div class="rr-data-basis">{escape(date_text)} 시장 데이터 기준 · 정상 갱신</div>'
+
+
+def _duration_text(row: dict) -> str:
+    state = str(row.get("state", ""))
+    if state not in {"newly_rising", "rising_persistent"} or not row.get("confirmed_at"):
+        return ""
+    try:
+        end_date = row.get("observed_date") or pd.Timestamp.now(tz="Asia/Seoul").date().isoformat()
+        days = max(1, (pd.Timestamp(end_date).date() - pd.Timestamp(row.get("confirmed_at")).date()).days + 1)
+        return f"{days}일째"
+    except Exception:
+        return ""
+
+
+def render_status_cards_html(data_quality: dict | None, matrix: pd.DataFrame | None,
+                             aux_df: pd.DataFrame | None, rate_summary: dict | None = None) -> str:
+    """현황 탭의 대형 3카드: 기업 신용·장기금리·시장 변동성."""
+    dq = data_quality or {}
+    credit = dq.get("credit_episode") or {}
+    current = credit.get("current") or {}
+    nodes = current.get("nodes") or {}
+    hy_node = nodes.get("HY") or {}
+    lens = credit.get("lens") or {}
+
+    hy = _matrix_row(matrix, "HYOAS")
+    d30 = _matrix_row(matrix, "DGS30")
+    vix = _matrix_row(matrix, "VIX")
+    cards: list[str] = []
+
+    hy_value = fmt_value(hy.get("latest_value") if hy is not None else None, str(hy.get("value_unit", "") if hy is not None else ""))
+    hy_dir, hy_change = _change_line(hy)
+    hy_state = credit_state_name(hy_node.get("state"), hy_node.get("state_label")) if hy_node else "확인 불가"
+    duration = _duration_text(hy_node)
+    lens_value = lens.get("latest_value_bp")
+    lens_change = lens.get("change_1m_bp")
+    lens_text = "HY−BBB 확인 불가" if lens_value is None else f"HY−BBB {float(lens_value) / 100.0:.2f}%p ({_direction_symbol(lens_change)} {('-' if lens_change is None else f'{float(lens_change) / 100.0:+.2f}%p')})"
+    credit_relation = plain_language(_text(current.get("scope_text"), "현재 기업 신용에 새로 강조할 움직임이 없습니다."))
+    cards.append(
+        '<article class="rr-status-card rr-domain-credit ' + escape(_visual_state_class("HY", "", credit_state=str(hy_node.get("state", "normal")))) + '">'
+        '<div class="rr-status-kicker">기업 신용</div><h2>HY OAS</h2><p>낮은 등급 회사채</p>'
+        f'<div class="rr-status-value">{escape(hy_value)}</div>'
+        f'<div class="rr-status-state">{escape(hy_state)}</div>'
+        f'<div class="rr-status-change">{escape(hy_dir)} {escape(hy_change)} <span>최근 약 1개월</span></div>'
+        f'<div class="rr-status-meta">{escape(_position_text(hy))}' + (f' · {escape(duration)}' if duration else '') + '</div>'
+        f'<div class="rr-relation-line">{escape(credit_relation)}<br>{escape(lens_text)}</div>'
+        '</article>'
+    )
+
+    d30_value = fmt_value(d30.get("latest_value") if d30 is not None else None, str(d30.get("value_unit", "") if d30 is not None else ""))
+    d30_dir, d30_change = _change_line(d30)
+    rate = rate_summary or {}
+    primary = rate.get("primary") or {}
+    real = primary.get("DFII30_change_bp")
+    gap = primary.get("INFLCOMP30_change_bp")
+    try:
+        same = float(real) * float(gap) >= 0
+        relation = "실질 30Y와 30Y 국채 금리 차이가 같은 방향이었습니다." if same else "실질 30Y와 30Y 국채 금리 차이가 서로 일부 상쇄했습니다."
+    except Exception:
+        relation = "30Y 금리 변화 구성을 현재 확인할 수 없습니다."
+    cards.append(
+        '<article class="rr-status-card rr-domain-rate ' + escape(_visual_state_class("DGS30", str(d30.get("state_code", "") if d30 is not None else ""))) + '">'
+        '<div class="rr-status-kicker">장기금리</div><h2>30Y</h2><p>미국 30년 국채금리</p>'
+        f'<div class="rr-status-value">{escape(d30_value)}</div>'
+        f'<div class="rr-status-state">{escape(_status_name(d30, "DGS30"))}</div>'
+        f'<div class="rr-status-change">{escape(d30_dir)} {escape(d30_change)} <span>최근 약 1개월</span></div>'
+        f'<div class="rr-status-meta">{escape(_position_text(d30))}</div>'
+        f'<div class="rr-relation-line">{escape(relation)}</div>'
+        '</article>'
+    )
+
+    vix_value = fmt_value(vix.get("latest_value") if vix is not None else None, str(vix.get("value_unit", "") if vix is not None else ""))
+    vix_dir, vix_change = _change_line(vix)
+    cards.append(
+        '<article class="rr-status-card rr-domain-vol ' + escape(_visual_state_class("VIX", str(vix.get("state_code", "") if vix is not None else ""))) + '">'
+        '<div class="rr-status-kicker">시장 변동성</div><h2>VIX</h2><p>주식시장 예상 변동성</p>'
+        f'<div class="rr-status-value">{escape(vix_value)}</div>'
+        f'<div class="rr-status-state">{escape(_status_name(vix, "VIX"))}</div>'
+        f'<div class="rr-status-change">{escape(vix_dir)} {escape(vix_change)} <span>최근 약 1개월</span></div>'
+        f'<div class="rr-status-meta">{escape(_position_text(vix))}</div>'
+        '<div class="rr-relation-line">VIX는 주식시장 변동성의 경계 신호를 따로 확인합니다.</div>'
+        '</article>'
+    )
+    return '<section class="rr-section"><div class="rr-section-title"><h2>현황 한눈에</h2></div><div class="rr-status-grid">' + ''.join(cards) + '</div></section>'
+
+
+def render_market_interpretation_html(data_quality: dict | None, matrix: pd.DataFrame | None,
+                                      aux_df: pd.DataFrame | None, rate_summary: dict | None = None) -> str:
+    """숫자 반복 없이 관계 중심으로 최대 2문장과 확인점 하나를 보여준다."""
+    dq = data_quality or {}
+    lines: list[str] = []
+    credit = dq.get("credit_episode") or {}
+    current = credit.get("current") or {}
+    scope = plain_language(_text(current.get("scope_text"), "현재 기업 신용에 새로 강조할 움직임이 없습니다."))
+    if current:
+        lines.append(scope)
+    rate = rate_summary or {}
+    primary = rate.get("primary") or {}
+    try:
+        real = float(primary.get("DFII30_change_bp"))
+        gap = float(primary.get("INFLCOMP30_change_bp"))
+        if real * gap < 0:
+            lines.append("실질 30Y와 30Y 국채 금리 차이가 장기금리에 서로 반대 방향의 요인으로 작용했습니다.")
+        elif abs(real) > 0.05 or abs(gap) > 0.05:
+            lines.append("실질 30Y와 30Y 국채 금리 차이가 장기금리에 같은 방향의 요인으로 작용했습니다.")
+    except Exception:
+        pass
+    if not lines:
+        lines.append("현재 정의된 지표 사이에서 따로 강조할 관계는 뚜렷하지 않습니다.")
+    checks = render_next_checks_markdown(dq, {}).splitlines()
+    check_text = next((line for line in checks if line and not line.startswith("#") and not line.startswith("현재:")), "다음 데이터에서 같은 흐름이 이어지는지 확인합니다.")
+    paragraphs = ''.join(f'<p>{escape(x)}</p>' for x in lines[:2])
+    return (
+        '<section class="rr-section rr-interpretation">'
+        '<div class="rr-section-title"><h2>시장 해석</h2></div>'
+        '<div class="rr-interpretation-grid"><div><strong>전체 흐름</strong>' + paragraphs +
+        '</div><div><strong>확인할 점</strong><p>' + escape(check_text) + '</p></div></div></section>'
+    )
+
+
+def _aux_direction_label(row: pd.Series | None) -> str:
+    if row is None:
+        return "확인 불가"
+    if str(row.get("staleness_label", "")) == "stale" or str(row.get("fetch_status", "ok")) in {"failed", "carried_forward"}:
+        return "확인 불가"
+    direction = str(row.get("direction", ""))
+    return {"상승": "최근 상승", "하락": "최근 하락", "보합": "뚜렷한 움직임 없음"}.get(direction, "확인 불가")
+
+
+def render_key_indicator_cards_html(data_quality: dict | None, matrix: pd.DataFrame | None,
+                                    aux_df: pd.DataFrame | None) -> str:
+    """현황 탭 주요 지표: VIX를 제외한 신용·금리 미니 카드."""
+    credit = ((data_quality or {}).get("credit_episode") or {}).get("current") or {}
+    nodes = credit.get("nodes") or {}
+    specs = [
+        ("HY", "낮은 등급 회사채", _matrix_row(matrix, "HYOAS"), False, credit_state_name((nodes.get("HY") or {}).get("state"), (nodes.get("HY") or {}).get("state_label"))),
+        ("BBB", "투자등급 경계", _aux_row(aux_df, "BBBOAS"), True, credit_state_name((nodes.get("BBB") or {}).get("state"), (nodes.get("BBB") or {}).get("state_label"))),
+        ("A", "우량 회사채", _aux_row(aux_df, "AOAS"), True, credit_state_name((nodes.get("A") or {}).get("state"), (nodes.get("A") or {}).get("state_label"))),
+        ("CP", "단기 기업자금 금리차", _aux_row(aux_df, "CPSPREAD"), True, credit_state_name((nodes.get("CP") or {}).get("state"), (nodes.get("CP") or {}).get("state_label"))),
+        ("30Y", "미국 30년 국채금리", _matrix_row(matrix, "DGS30"), False, None),
+        ("2Y", "미국 2년 국채금리", _matrix_row(matrix, "DGS2"), False, None),
+        ("실질 10Y", "물가 영향을 뺀 10년 금리", _matrix_row(matrix, "DFII10"), False, None),
+        ("10Y-3M", "10년·3개월 국채금리 차이", _matrix_row(matrix, "T10Y3M"), False, None),
+        ("10Y Term Premium", "장기채 추가 보상 추정치", _aux_row(aux_df, "TERMPREM"), True, None),
+    ]
+    cards: list[str] = []
+    for name, subtitle, row, is_aux, forced_state in specs:
+        value = fmt_value(row.get("latest_value") if row is not None else None, str(row.get("value_unit", "") if row is not None else ""))
+        direction, change = _change_line(row, aux=is_aux)
+        key = str(row.get("key", "") if row is not None else "")
+        state = forced_state or (_aux_direction_label(row) if is_aux else _status_name(row, key))
+        cards.append(
+            '<article class="rr-mini-card">'
+            f'<div class="rr-metric-name">{escape(name)}</div>'
+            f'<div class="rr-metric-subtitle">{escape(subtitle)}</div>'
+            f'<div class="rr-metric-value">{escape(value)}</div>'
+            f'<div class="rr-metric-state">{escape(state)}</div>'
+            f'<div class="rr-metric-change">{escape(direction)} {escape(change)} <span>최근 약 1개월</span></div>'
+            '</article>'
+        )
+    return '<section class="rr-section"><div class="rr-section-title"><h2>주요 지표</h2></div><div class="rr-mini-grid">' + ''.join(cards) + '</div></section>'
+
+
+def render_status_changes_html(diff: dict | None) -> str:
+    """저장된 decision diff의 실제 상태 전환만 최근 상태 변화로 보여준다."""
+    if not diff or str(diff.get("status", "")) == "cold_start":
+        return '<section class="rr-section"><div class="rr-section-title"><h2>최근 상태 변화</h2></div><div class="rr-quiet-line">상태 변화 기록을 쌓는 중입니다.</div></section>'
+    events = [e for e in (diff.get("market_transitions") or []) if _is_change_center_event(e)]
+    if not events:
+        return '<section class="rr-section"><div class="rr-section-title"><h2>최근 상태 변화</h2></div><div class="rr-quiet-line">최근 30일 동안 확인된 상태 변화가 없습니다.</div></section>'
+    rows = []
+    for event in events[:5]:
+        name = _event_card_name(str(event.get("section", "")), str(event.get("key", "")))
+        previous = _compact_transition_text(event.get("previous")) if event.get("previous") is not None else "이전 상태"
+        current = _compact_transition_text(event.get("current")) if event.get("current") is not None else plain_language(str(event.get("message") or "변화 확인"))
+        rows.append(f'<li><strong>{escape(name)}</strong><span>{escape(previous)} → {escape(current)}</span></li>')
+    return '<section class="rr-section"><div class="rr-section-title"><h2>최근 상태 변화</h2><span>최근 30일 · 최대 5건</span></div><ul class="rr-change-list">' + ''.join(rows) + '</ul></section>'
+
+
+def render_decision_basis_markdown(decision_snapshot: dict | None, data_quality: dict | None) -> str:
+    """저장 판정과 기존 state reason만 접힘 영역에 표시한다."""
+    snap = decision_snapshot or {}
+    lines = ["### 저장된 판정"]
+    credit = (data_quality or {}).get("credit_episode") or {}
+    current = credit.get("current") or {}
+    if current:
+        lines.append(f"- 기업 신용: {plain_language(_text(current.get('scope_text')))}")
+    core = snap.get("core") or {}
+    if core:
+        lines += ["", "### 핵심 지표 판정"]
+        for key, row in list(core.items())[:6]:
+            label = _text(row.get("state_label"), "확인 불가")
+            reason = _text(row.get("state_reason"), "")
+            item = f"- **{core_name(str(key), short=True)}:** {plain_language(label)}"
+            if reason:
+                item += f" — {plain_language(reason)}"
+            lines.append(item)
+    if len(lines) == 1:
+        lines.append("저장된 판정 근거를 현재 확인할 수 없습니다.")
+    return "\n".join(lines)
 
 
 def render_core_cards_html(matrix: pd.DataFrame, chart_data: pd.DataFrame, *, changes_only: bool = False) -> str:
@@ -689,7 +943,7 @@ def render_credit_range_map_html(data_quality: dict | None,
         "HY": "낮은 등급 회사채",
         "BBB": "투자등급 경계",
         "A": "우량 회사채",
-        "CP": "단기 기업자금",
+        "CP": "단기 기업자금 금리차",
     }
 
     def node_card(node: str) -> str:
@@ -728,7 +982,7 @@ def render_credit_range_map_html(data_quality: dict | None,
         '</div>'
         f'<div class="rr-credit-scope">{escape(scope)}</div>'
         '<div class="rr-credit-lens-line">'
-        '<div><span>HY−BBB</span><strong>' + escape(lens_value_text) + '</strong></div>'
+        '<div><span>HY−BBB</span><strong>' + escape(lens_value_text) + '</strong><small>HY와 BBB의 추가 금리 차이</small></div>'
         '<div class="rr-credit-lens-change">' + escape(f"{lens_direction} {lens_change_text}") + ' <span>1개월</span></div>'
         '<em>' + escape(lens_label) + '</em>'
         '</div>'

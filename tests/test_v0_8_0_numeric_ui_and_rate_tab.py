@@ -47,6 +47,7 @@ def _aux() -> pd.DataFrame:
         {"key": "BBBOAS", "latest_value": 1.21, "value_unit": "%", "change_1m": 4.0, "change_unit": "bp"},
         {"key": "AOAS", "latest_value": 0.78, "value_unit": "%", "change_1m": 2.0, "change_unit": "bp"},
         {"key": "CPSPREAD", "latest_value": 24.0, "value_unit": "bp", "change_1m": -1.0, "change_unit": "bp"},
+        {"key": "BREAKEVEN", "latest_value": 2.35, "value_unit": "%", "change_1m": 2.0, "change_unit": "bp"},
         {"key": "TERMPREM", "latest_value": 0.73, "value_unit": "%", "change_1m": -3.0, "change_unit": "bp"},
     ])
 
@@ -139,7 +140,7 @@ def test_rate_tab_components_are_numeric_cards_and_three_column_table():
     assert "-0.07%p" in curve and "+0.02%p" in curve
 
     scan = render_scan_html(_rate_summary())
-    assert "4.99%" in scan and "+0.02%p" in scan
+    assert "+0.02%p" in scan and "전체 변화" in scan
     assert "서로 일부 상쇄" in scan
 
     table = render_rate_change_table_html(_rate_summary())
@@ -151,8 +152,8 @@ def test_rate_tab_components_are_numeric_cards_and_three_column_table():
 def test_rate_reference_indicators_are_cards_not_line_list():
     html = render_rate_reference_cards_html(_matrix(), _aux())
     assert html.count("rr-metric-card") == 2
-    assert "실질 10Y" in html and "2.24%" in html and "+0.13%p" in html
-    assert "Term Premium" in html and "0.73%" in html and "-0.03%p" in html
+    assert "10Y Breakeven" in html and "2.35%" in html and "+0.02%p" in html
+    assert "10Y Term Premium" in html and "0.73%" in html and "-0.03%p" in html
     assert "미국 30년 국채금리(30Y):" not in html
 
 
@@ -185,7 +186,7 @@ def test_v080_ui_has_rate_tab_and_date_selector_and_no_large_rate_panel_on_today
     source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
     assert 'with gr.Tab("금리")' in source
     assert 'gr.Markdown("## 금리 현황")' in source
-    assert 'gr.Markdown("---\\n\\n## 날짜별 지표 보기")' in source
-    today = source[source.index('with gr.Tab("오늘")'):source.index('with gr.Tab("신용")')]
+    assert 'gr.Markdown("---\\n\\n## 같은 날짜로 비교")' in source
+    today = source[source.index('with gr.Tab("현황")'):source.index('with gr.Tab("신용")')]
     assert "rate_scan_component" not in today
     assert _is_compatible_data_code_version("0.7.4", "0.8.0") is True

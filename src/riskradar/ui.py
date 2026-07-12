@@ -32,10 +32,13 @@ from .indicator_detail_view import render_indicator_detail
 from .relationship_guide import RELATIONSHIP_GUIDE
 from .today_view import render_credit_episode_markdown, render_today_markdown, render_today_summary_markdown
 from .overview_view import (
-    render_core_cards_html, render_credit_range_map_html, render_data_health_badge,
-    render_domain_strip_html, render_evidence_balance_markdown, render_next_checks_html,
-    render_next_checks_markdown, render_recent_changes_html, render_recent_changes_markdown,
-    render_remaining_changes_html, render_remaining_changes_markdown, render_today_one_line_markdown,
+    render_core_cards_html, render_credit_range_map_html, render_data_basis_html,
+    render_data_health_badge, render_decision_basis_markdown, render_domain_strip_html,
+    render_evidence_balance_markdown, render_key_indicator_cards_html,
+    render_market_interpretation_html, render_next_checks_html, render_next_checks_markdown,
+    render_recent_changes_html, render_recent_changes_markdown, render_remaining_changes_html,
+    render_remaining_changes_markdown, render_status_cards_html, render_status_changes_html,
+    render_today_one_line_markdown,
 )
 from .monthly_view import reconstruct_history_from_chart_data, render_monthly_markdown
 from .dashboard_snapshot import DashboardSnapshot, load_dashboard_snapshot
@@ -61,7 +64,32 @@ APP_CSS = r"""
 .rr-info-box { font-size:.86rem; line-height:1.55; opacity:.84; background:var(--background-fill-secondary); }
 .rr-more { margin-top:8px; font-size:.86rem; opacity:.72; }
 
-/* 오늘: 종합점수 없이 세 영역만 */
+/* 현황: 상태 복구 중심 */
+.rr-data-basis { font-size:.86rem; color:var(--body-text-color-subdued); margin:4px 0 10px; }
+.rr-data-warning { border:1px solid color-mix(in srgb, var(--rr-amber, #d68b1f) 52%, var(--border-color-primary)); border-radius:12px; padding:10px 12px; background:color-mix(in srgb, var(--rr-amber, #d68b1f) 8%, var(--background-fill-primary)); color:var(--body-text-color); }
+.rr-status-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.rr-status-card { border:1px solid var(--border-color-primary); border-radius:18px; padding:15px; background:var(--background-fill-primary); min-width:0; box-shadow:0 5px 18px rgba(20,32,55,.045); }
+.rr-status-kicker { font-size:.78rem; font-weight:900; color:var(--body-text-color-subdued); }
+.rr-status-card h2 { margin:5px 0 1px; font-size:1.35rem; letter-spacing:-.03em; }
+.rr-status-card p { margin:0; font-size:.86rem; color:var(--body-text-color-subdued); }
+.rr-status-value { margin-top:12px; font-size:1.7rem; font-weight:950; letter-spacing:-.04em; }
+.rr-status-state { display:inline-flex; margin-top:6px; border-radius:999px; padding:3px 8px; background:color-mix(in srgb, currentColor 7%, transparent); font-weight:900; }
+.rr-status-change { margin-top:8px; font-size:.88rem; font-weight:850; color:var(--body-text-color-subdued); }
+.rr-status-change span { font-weight:400; opacity:.72; margin-left:3px; }
+.rr-status-meta { margin-top:7px; font-size:.8rem; color:var(--body-text-color-subdued); }
+.rr-relation-line { margin-top:11px; padding-top:10px; border-top:1px solid var(--border-color-primary); font-size:.86rem; line-height:1.45; }
+.rr-interpretation-grid { display:grid; grid-template-columns:2fr 1fr; gap:10px; }
+.rr-interpretation-grid > div { border:1px solid var(--border-color-primary); border-radius:14px; padding:12px; background:var(--background-fill-primary); }
+.rr-interpretation-grid strong { display:block; margin-bottom:5px; }
+.rr-interpretation-grid p { margin:4px 0; line-height:1.48; }
+.rr-mini-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.rr-mini-card { border:1px solid var(--border-color-primary); border-radius:14px; padding:12px; background:var(--background-fill-primary); min-width:0; box-shadow:0 5px 18px rgba(20,32,55,.035); }
+.rr-change-list { list-style:none; padding:0; margin:8px 0; border:1px solid var(--border-color-primary); border-radius:14px; overflow:hidden; }
+.rr-change-list li { display:grid; grid-template-columns:150px minmax(0,1fr); gap:10px; padding:11px 12px; border-bottom:1px solid var(--border-color-primary); }
+.rr-change-list li:last-child { border-bottom:none; }
+.rr-change-list span { color:var(--body-text-color-subdued); }
+
+/* 구 현황 카드 호환 */
 .rr-domain-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin:8px 0 16px; }
 .rr-domain-card { border:1px solid var(--border-color-primary); border-radius:14px; padding:12px; background:var(--background-fill-primary); min-width:0; }
 .rr-domain-card small { display:block; opacity:.65; font-weight:700; margin-bottom:6px; }
@@ -91,7 +119,7 @@ APP_CSS = r"""
 .rr-credit-grid-2x2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
 .rr-credit-tile { border:1px solid var(--border-color-primary); border-radius:14px; padding:13px; min-width:0; background:var(--background-fill-primary); }
 .rr-credit-tile-hot { border-width:2px; box-shadow:0 4px 14px rgba(0,0,0,.05); }
-.rr-credit-tile-quiet { opacity:.78; background:var(--background-fill-secondary); }
+.rr-credit-tile-quiet { background:var(--background-fill-secondary); }
 .rr-credit-tile-head { display:flex; flex-direction:column; gap:2px; }
 .rr-credit-tile-head strong { font-size:1.2rem; }
 .rr-credit-tile-head small { opacity:.64; }
@@ -119,6 +147,7 @@ APP_CSS = r"""
 .rr-rate-row { margin:12px 0; }
 .rr-rate-label { display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:.88rem; }
 .rr-rate-label strong { white-space:nowrap; }
+.rr-rate-label small, .rr-rate-opposite small { display:block; margin-top:2px; font-size:.74rem; opacity:.64; font-weight:400; }
 .rr-rate-track { height:8px; border-radius:999px; background:var(--background-fill-secondary); overflow:hidden; margin-top:6px; }
 .rr-rate-fill { display:block; height:100%; border-radius:999px; background:currentColor; opacity:.68; }
 .rr-rate-up { color:var(--button-primary-background-fill, currentColor); }
@@ -256,7 +285,7 @@ APP_CSS = r"""
 .rr-core-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:8px 0 10px; }
 .rr-core-card { border:1px solid var(--border-color-primary); border-radius:14px; padding:12px; min-width:0; background:var(--background-fill-primary); }
 .rr-core-card-hot { border-width:2px; box-shadow:0 4px 14px rgba(0,0,0,.045); }
-.rr-core-card-quiet { opacity:.74; background:var(--background-fill-secondary); }
+.rr-core-card-quiet { background:var(--background-fill-secondary); }
 .rr-core-head { display:flex; justify-content:space-between; gap:6px; align-items:flex-start; }
 .rr-core-head > strong { font-size:.96rem; }
 .rr-core-state { font-size:.74rem; text-align:right; line-height:1.25; }
@@ -268,7 +297,7 @@ APP_CSS = r"""
 /* 오늘의 핵심 2개 */
 .rr-brief-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:18px 0; align-items:start; }
 
-/* 다음에 볼 것 */
+/* 확인 포인트 */
 .rr-next-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
 .rr-next-item { display:flex; gap:10px; align-items:flex-start; border-top:2px solid var(--border-color-primary); padding:10px 3px 2px; }
 .rr-next-num { display:flex; align-items:center; justify-content:center; width:25px; height:25px; border-radius:999px; background:var(--background-fill-secondary); font-weight:900; flex:0 0 auto; }
@@ -285,6 +314,10 @@ APP_CSS = r"""
 .rr-timeline-event small { margin-top:3px; opacity:.64; font-size:.79rem; }
 
 @media (max-width:760px) {
+  .rr-status-grid { grid-template-columns:1fr; }
+  .rr-interpretation-grid { grid-template-columns:1fr; }
+  .rr-mini-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .rr-change-list li { grid-template-columns:1fr; gap:4px; }
   .rr-domain-strip { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
   .rr-domain-card { padding:10px 8px; }
   .rr-domain-metric { display:block; }
@@ -305,8 +338,11 @@ APP_CSS = r"""
   .rr-credit-lens-line em { grid-column:1 / -1; text-align:left; }
   .rr-metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
   .rr-metric-card { padding:11px; }
-  .rr-metric-value { font-size:1.25rem; }
-  .rr-curve-summary { align-items:flex-start; flex-direction:column; }
+	  .rr-metric-value { font-size:1.25rem; }
+	  .rr-curve-summary { align-items:flex-start; flex-direction:column; }
+	}
+@media (max-width:420px) {
+  .rr-mini-grid, .rr-metric-grid { grid-template-columns:1fr; }
 }
 """
 
@@ -344,9 +380,9 @@ GUIDE_INTRO = r"""
 
 RiskRadar는 미국 시장을 **주식시장 변동성·기업 신용·경기 흐름·금리 움직임**으로 나눠 봅니다. 하나의 점수로 시장을 단정하지 않고, 현재값·상태·최근 추세를 따로 보여줍니다.
 
-1. **오늘**에서 새 변화, 현재 추세, 신용 2×2와 핵심 6개를 빠르게 봅니다.
+1. **현황**에서 현재 상태와 최근 흐름을 빠르게 봅니다.
 2. **신용**에서 HY·BBB·A·CP의 현재값·상태·1개월 변화와 최근 90일 기록을 봅니다.
-3. **금리**에서 금리 현황, 금리곡선, 30년 금리 구성, 장기금리 참고 지표를 봅니다.
+3. **금리**에서 금리 현황, 단기·장기 금리 관계, 30Y 금리 변화 나눠보기, 장기금리 참고 지표를 봅니다.
 4. **흐름**에서 지난 30일 과정과 선택 지표의 원자료 흐름을 봅니다.
 5. **비교**에서 최신 지표를 비교하거나 기준일을 직접 골라 같은 날짜의 핵심 6개를 봅니다.
 6. **설명**에서 지표별 읽는 법과 관계를 자세히 봅니다.
@@ -415,7 +451,7 @@ HISTORY_HELP = r"""
 """
 
 SYNCED_HELP = r"""
-### 날짜별 지표 보기
+### 같은 날짜로 비교
 
 각 지표의 최신 관측일은 다를 수 있습니다. 핵심 6개에 실제 관측값이 모두 있는 날짜를 직접 골라 같은 날짜 기준으로 비교합니다.
 """
@@ -938,6 +974,12 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
     return {
         "banner": _loaded_banner(snapshot),
         "data_health": render_data_health_badge(snapshot.status, snapshot.data_quality, snapshot.decision_diff, snapshot.load_errors),
+        "data_basis": render_data_basis_html(snapshot.status, arts["signal_matrix"], aux_df, snapshot.load_errors),
+        "status_cards": render_status_cards_html(effective_dq, arts["signal_matrix"], aux_df, snapshot.rate_composition),
+        "market_interpretation": render_market_interpretation_html(effective_dq, arts["signal_matrix"], aux_df, snapshot.rate_composition),
+        "key_indicator_cards": render_key_indicator_cards_html(effective_dq, arts["signal_matrix"], aux_df),
+        "status_changes_html": render_status_changes_html(snapshot.decision_diff),
+        "decision_basis": render_decision_basis_markdown(snapshot.decision_snapshot, effective_dq),
         "today_one_line": render_today_one_line_markdown(effective_dq),
         "domain_strip": render_domain_strip_html(effective_dq, arts["signal_matrix"]),
         "recent_changes": render_recent_changes_markdown(snapshot.decision_diff),
@@ -1021,7 +1063,7 @@ def build_app():
     with gr.Blocks(title="RiskRadar") as demo:
         gr.HTML(
             f'<div class="rr-app-head"><div><h1>RiskRadar</h1>'
-            f'<p>오늘 달라진 것부터 빠르게 봅니다.</p></div>'
+            f'<p>현재 상태와 최근 흐름을 빠르게 봅니다.</p></div>'
             f'<strong>v{__version__}</strong></div>'
         )
         data_health_component = gr.Markdown(initial["data_health"])
@@ -1042,30 +1084,25 @@ def build_app():
                 status_json_component = gr.JSON(initial["status_json"])
                 data_quality_json_component = gr.JSON(initial["data_quality_json"])
 
-        with gr.Tab("오늘"):
-            domain_strip_component = gr.HTML(initial["domain_strip"])
-            recent_changes_component = gr.HTML(initial["recent_changes_html"])
-            remaining_changes_component = gr.HTML(initial["remaining_changes_html"])
+        with gr.Tab("현황"):
+            data_basis_component = gr.HTML(initial["data_basis"])
+            status_cards_component = gr.HTML(initial["status_cards"])
+            market_interpretation_component = gr.HTML(initial["market_interpretation"])
+            key_indicator_cards_component = gr.HTML(initial["key_indicator_cards"])
+            status_changes_component = gr.HTML(initial["status_changes_html"])
 
-            credit_map_today_component = gr.HTML(initial["credit_map"])
-
-            gr.Markdown("## 핵심 6개")
-            core_cards_component = gr.HTML(initial["core_cards_all"])
-            next_checks_component = gr.HTML(initial["next_checks_html"])
-
-            with gr.Accordion("왜 이렇게 봤나", open=False, elem_classes="rr-detail-accordion"):
-                evidence_balance_component = gr.Markdown(initial["evidence_balance"])
-                with gr.Accordion("전체 해석 읽기", open=False, elem_classes="rr-detail-accordion"):
-                    today_component = gr.Markdown(initial["today"])
+            with gr.Accordion("판정 근거 자세히 보기", open=False, elem_classes="rr-detail-accordion"):
+                decision_basis_component = gr.Markdown(initial["decision_basis"])
 
         with gr.Tab("신용"):
+            gr.Markdown("회사채 수치는 비슷한 만기의 국채 대비 추가 금리입니다.")
             credit_map_component = gr.HTML(initial["credit_map"])
             credit_timeline_component = gr.HTML(initial["credit_timeline_html"])
-            with gr.Accordion("지난 변화 기록", open=False, elem_classes="rr-detail-accordion"):
+            with gr.Accordion("지난 신용 변화", open=False, elem_classes="rr-detail-accordion"):
                 past_credit_episodes_component = gr.Markdown(initial["past_credit_episodes_compact"])
-            with gr.Accordion("신용 변화 상세", open=False, elem_classes="rr-detail-accordion"):
+            with gr.Accordion("현재 신용 상태 자세히", open=False, elem_classes="rr-detail-accordion"):
                 credit_component = gr.Markdown(initial["credit"])
-            with gr.Accordion("신용 지표 설명", open=False, elem_classes="rr-detail-accordion"):
+            with gr.Accordion("지표 뜻과 읽는 법", open=False, elem_classes="rr-detail-accordion"):
                 with gr.Accordion(f"{lens_name('HY_BBB')} 설명", open=False, elem_classes="rr-detail-accordion"):
                     gr.Markdown(_static_guide_card("HY_BBB"))
                 credit_aux_detail_components = {}
@@ -1080,14 +1117,16 @@ def build_app():
             rate_overview_component = gr.HTML(initial["rate_overview_html"])
             rate_curve_component = gr.HTML(initial["rate_curve_html"])
 
-            gr.Markdown("## 30년 금리")
+            gr.Markdown("## 30Y 금리 변화 나눠보기")
             rate_scan_component = gr.HTML(initial["rate_scan_html"])
-            rate_change_table_component = gr.HTML(initial["rate_change_table_html"])
+            with gr.Accordion("약 3개월까지 비교", open=False, elem_classes="rr-detail-accordion"):
+                rate_change_table_component = gr.HTML(initial["rate_change_table_html"])
 
             gr.Markdown("## 장기금리 참고")
+            gr.Markdown("아래 지표는 30Y 금리 구성에 직접 더하는 값이 아니라 별도로 함께 보는 참고 자료입니다.")
             rate_reference_component = gr.HTML(initial["rate_reference_html"])
 
-            with gr.Accordion("금리 지표 설명", open=False, elem_classes="rr-detail-accordion"):
+            with gr.Accordion("지표 뜻과 읽는 법", open=False, elem_classes="rr-detail-accordion"):
                 rate_core_detail_components = {}
                 for key in ("DGS30", "DGS2", "DFII10", "T10Y3M"):
                     with gr.Accordion(f"{core_name(key, short=True)} 설명", open=False, elem_classes="rr-detail-accordion"):
@@ -1101,7 +1140,6 @@ def build_app():
                             initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
                         )
 
-            with gr.Accordion("금리 설명·주의사항", open=False, elem_classes="rr-detail-accordion"):
                 rate_notes_component = gr.HTML(initial["rate_notes_html"])
 
         with gr.Tab("흐름"):
@@ -1115,20 +1153,20 @@ def build_app():
             selector = gr.Dropdown(choices=choices, value=default_key, label="지표 선택")
             history_state = gr.State(initial["history"])
             chart_data_state = gr.State(initial["chart_data"])
-            with gr.Accordion("선택 지표 설명", open=False, elem_classes="rr-detail-accordion"):
-                interpretation_card = gr.Markdown(_static_guide_card(default_key))
             hist_plot = gr.LinePlot(
                 value=initial["history_plot"], x="날짜", y="최신값",
                 title="선택 지표의 지난 30일 값 변화",
             )
-            with gr.Accordion("차트 읽는 법", open=False):
-                gr.Markdown(CHART_HELP)
-            selected_chart = gr.LinePlot(
-                value=initial["charts"][default_key], x="날짜", y="값",
-                title="선택 지표의 전체 원자료 흐름",
-            )
+            with gr.Accordion("현재 제공되는 전체 기간 흐름", open=False):
+                selected_chart = gr.LinePlot(
+                    value=initial["charts"][default_key], x="날짜", y="값",
+                    title="선택 지표의 현재 제공되는 전체 기간 흐름",
+                )
             with gr.Accordion("지난 30일 표", open=False):
                 hist_table = gr.Dataframe(initial["history_table"], wrap=True, interactive=False)
+            with gr.Accordion("지표 뜻과 읽는 법", open=False, elem_classes="rr-detail-accordion"):
+                interpretation_card = gr.Markdown(_static_guide_card(default_key))
+                gr.Markdown(CHART_HELP)
 
             def _history_selection(key, history, chart_data):
                 history = history if isinstance(history, pd.DataFrame) else pd.DataFrame(history or [])
@@ -1148,13 +1186,14 @@ def build_app():
 
         with gr.Tab("비교"):
             gr.Markdown("## 최신 지표 비교")
+            gr.Markdown("각 지표의 최신 관측값을 비교합니다. 지표별 관측일은 다를 수 있습니다.")
             with gr.Accordion("표 읽는 법", open=False):
                 gr.Markdown(SIGNAL_MATRIX_HELP)
             matrix_component = gr.Dataframe(initial["matrix"], wrap=True, interactive=False)
-            with gr.Accordion("과거 위치·관측일", open=False):
+            with gr.Accordion("상대 위치·관측일", open=False):
                 matrix_detail_component = gr.Dataframe(initial["matrix_detail"], wrap=True, interactive=False)
 
-            gr.Markdown("---\n\n## 날짜별 지표 보기")
+            gr.Markdown("---\n\n## 같은 날짜로 비교")
             date_selector = gr.Dropdown(
                 choices=initial["common_dates"],
                 value=initial["selected_common_date"],
@@ -1174,7 +1213,6 @@ def build_app():
             )
 
         with gr.Tab("설명"):
-            gr.Markdown(GUIDE_INTRO)
             guide_selector = gr.Dropdown(choices=guide_choices, value=default_key, label="상세 설명을 볼 지표")
             guide_card = gr.Markdown(_static_guide_card(default_key))
 
@@ -1183,13 +1221,12 @@ def build_app():
 
             guide_selector.change(fn=_guide_card, inputs=guide_selector, outputs=guide_card)
 
-            with gr.Accordion("시장 전체 참고 지표", open=False, elem_classes="rr-detail-accordion"):
-                market_reference_components = {}
-                for key in ("NFCI", "STLFSI"):
-                    with gr.Accordion(f"{aux_name(key)} 설명", open=False, elem_classes="rr-detail-accordion"):
-                        market_reference_components[key] = gr.Markdown(
-                            initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
-                        )
+            market_reference_components = {}
+            for key in ("NFCI", "STLFSI"):
+                market_reference_components[key] = gr.Markdown(visible=False, value=initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다."))
+
+            with gr.Accordion("RiskRadar 읽는 법", open=False, elem_classes="rr-detail-accordion"):
+                gr.Markdown(GUIDE_INTRO)
 
             with gr.Accordion("지표를 함께 보는 법", open=False, elem_classes="rr-detail-accordion"):
                 gr.Markdown(plain_language(RELATIONSHIP_GUIDE))
@@ -1205,20 +1242,18 @@ def build_app():
             aux_status_component,
             status_json_component,
             data_quality_json_component,
-            domain_strip_component,
-            recent_changes_component,
-            remaining_changes_component,
-            credit_map_today_component,
+            data_basis_component,
+            status_cards_component,
+            market_interpretation_component,
+            key_indicator_cards_component,
+            status_changes_component,
+            decision_basis_component,
             rate_overview_component,
             rate_curve_component,
             rate_scan_component,
             rate_change_table_component,
             rate_reference_component,
             rate_notes_component,
-            core_cards_component,
-            next_checks_component,
-            evidence_balance_component,
-            today_component,
             credit_map_component,
             credit_timeline_component,
             past_credit_episodes_component,
@@ -1254,20 +1289,18 @@ def build_app():
                 payload["aux_status"],
                 payload["status_json"],
                 payload["data_quality_json"],
-                payload["domain_strip"],
-                payload["recent_changes_html"],
-                payload["remaining_changes_html"],
-                payload["credit_map"],
+                payload["data_basis"],
+                payload["status_cards"],
+                payload["market_interpretation"],
+                payload["key_indicator_cards"],
+                payload["status_changes_html"],
+                payload["decision_basis"],
                 payload["rate_overview_html"],
                 payload["rate_curve_html"],
                 payload["rate_scan_html"],
                 payload["rate_change_table_html"],
                 payload["rate_reference_html"],
                 payload["rate_notes_html"],
-                payload["core_cards_all"],
-                payload["next_checks_html"],
-                payload["evidence_balance"],
-                payload["today"],
                 payload["credit_map"],
                 payload["credit_timeline_html"],
                 payload["past_credit_episodes_compact"],
