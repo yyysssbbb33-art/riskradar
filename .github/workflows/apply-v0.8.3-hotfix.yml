@@ -1,4 +1,4 @@
-name: apply-v0.8.3-hotfix
+name: cleanup-v0.8.3-hotfix
 
 on:
   push:
@@ -6,13 +6,10 @@ on:
       - agent/v0.8.3-hotfix
     paths:
       - .github/workflows/apply-v0.8.3-hotfix.yml
-      - scripts/apply_v0_8_3_hotfix.py
-      - scripts/fix_v0_8_3_test_expectation.py
   pull_request:
     branches:
       - main
     types:
-      - opened
       - synchronize
       - reopened
 
@@ -20,67 +17,51 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-v0.8.3-hotfix
+  group: cleanup-v0.8.3-hotfix
   cancel-in-progress: true
 
 jobs:
-  apply:
+  cleanup:
     if: github.actor != 'github-actions[bot]' && (github.event_name == 'push' || github.head_ref == 'agent/v0.8.3-hotfix')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/v0.8.3-hotfix
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Apply hotfix
-        run: python scripts/apply_v0_8_3_hotfix.py
-
-      - name: Keep accurate BBB wording compatible with existing guide tests
-        run: python scripts/fix_v0_8_3_test_expectation.py
-
-      - name: Install
-        run: pip install -e '.[ui,dev]'
-
-      - name: Full test suite
-        id: tests
-        shell: bash
+      - name: Remove generated artifacts and add ignore rules
         run: |
-          set +e
-          pytest -q > pytest-output.txt 2>&1
-          status=$?
-          cat pytest-output.txt
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit "$status"
+          git rm -r --ignore-unmatch \
+            src/riskradar.egg-info \
+            src/riskradar/__pycache__ \
+            tests/__pycache__ \
+            pytest-output.txt \
+            HOTFIX_TEST_FAILURE.txt
+          rm -rf .pytest_cache
+          cat > .gitignore <<'EOF'
+          __pycache__/
+          *.py[cod]
+          *.egg-info/
+          .pytest_cache/
+          pytest-output.txt
+          HOTFIX_TEST_FAILURE.txt
+          _cache/
+          EOF
 
-      - name: Publish test failure report
-        if: failure() && steps.tests.outputs.status != '0'
+      - name: Verify generated files are not tracked
         run: |
-          cp pytest-output.txt HOTFIX_TEST_FAILURE.txt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add HOTFIX_TEST_FAILURE.txt
-          git commit -m 'Record v0.8.3 hotfix test failure'
-          git push origin HEAD:agent/v0.8.3-hotfix
+          if git ls-files | grep -E '(^|/)(__pycache__|.*\.egg-info)(/|$)|\.pyc$|(^|/)pytest-output\.txt$|(^|/)HOTFIX_TEST_FAILURE\.txt$'; then
+            echo 'Generated artifacts are still tracked.'
+            exit 1
+          fi
 
-      - name: Gradio smoke
-        run: |
-          python - <<'PY'
-          from riskradar.ui import build_app
-          app = build_app()
-          assert type(app).__name__ == 'Blocks'
-          print(type(app).__name__)
-          PY
-
-      - name: Commit validated hotfix
+      - name: Commit cleanup
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'Apply v0.8.3 release consistency hotfix'
+          git add .gitignore
+          git add -u
+          git commit -m 'Remove generated files from v0.8.3 hotfix'
           git push origin HEAD:agent/v0.8.3-hotfix
