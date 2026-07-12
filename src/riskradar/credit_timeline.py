@@ -38,7 +38,7 @@ def _event_text(kind: str, state: str, state_label: str) -> tuple[str, str] | No
     if kind == "confirmed":
         return "상승 확인", "confirmed"
     if kind == "new_peak":
-        return "이전 고점 돌파", "new_peak"
+        return "추가 상승", "new_peak"
     if kind == "retracing":
         return "하락 전환", "retracing"
     if kind == "normalized":
@@ -245,7 +245,7 @@ def build_credit_timeline(
 def render_credit_timeline_markdown(data: dict | None, *, max_events: int = 24) -> str:
     data = data or {}
     days = int(data.get("days") or TIMELINE_DAYS)
-    lines = [f"## 최근 {days}일 기업 신용 변화"]
+    lines = [f"## 최근 {days}일 신용 변화"]
     if not data.get("available"):
         lines += [
             "저장된 기업 신용 기록이 없어 최근 변화를 보여줄 수 없습니다.",
@@ -256,7 +256,7 @@ def render_credit_timeline_markdown(data: dict | None, *, max_events: int = 24) 
     lines += [
         f"**{data.get('window_start')} ~ {data.get('window_end')}** · 달력 {days}일 기준",
         "",
-        "최근 90일 동안 HY·BBB·A·CP 시장에서 **실제로 확인된 상승·고점 돌파·하락 전환·신호 해제**만 모았습니다. 확인 전에 잠깐 나타났다가 사라진 상승 조짐은 따로 사건으로 세지 않습니다.",
+        "확인된 상태 변화만 표시합니다.",
     ]
 
     events = list(data.get("events") or [])
@@ -319,7 +319,7 @@ def render_past_credit_episodes_markdown(data: dict | None, *, max_episodes: int
     return "\n".join(lines)
 
 
-def render_credit_timeline_html(data: dict | None, *, max_events: int = 24) -> str:
+def render_credit_timeline_html(data: dict | None, *, max_events: int = 10) -> str:
     """최근 90일 변화를 날짜·시장 배지·사건 중심의 스캔 리스트로 보여준다."""
     from html import escape
 
@@ -328,7 +328,7 @@ def render_credit_timeline_html(data: dict | None, *, max_events: int = 24) -> s
     if not data.get("available"):
         return (
             '<section class="rr-timeline">'
-            f'<div class="rr-section-title"><h2>최근 {days}일</h2></div>'
+            f'<div class="rr-section-title"><h2>최근 {days}일 신용 변화</h2></div>'
             '<div class="rr-empty">저장된 기업 신용 기록이 없습니다.</div>'
             '</section>'
         )
@@ -366,9 +366,9 @@ def render_credit_timeline_html(data: dict | None, *, max_events: int = 24) -> s
 
     return (
         '<section class="rr-timeline">'
-        f'<div class="rr-section-title"><h2>최근 {days}일</h2><span>{escape(str(data.get("window_start") or ""))} ~ {escape(str(data.get("window_end") or ""))}</span></div>'
+        f'<div class="rr-section-title"><h2>최근 {days}일 신용 변화</h2><span>{escape(str(data.get("window_start") or ""))} ~ {escape(str(data.get("window_end") or ""))}</span></div>'
         + body +
-        '<div class="rr-info-box">확인된 변화만 보여줍니다. 잠깐 나타났다가 확인 전에 사라진 움직임은 제외합니다. 어느 시장이 먼저 움직였는지에 의미를 붙이거나 다음 움직임을 예측하지 않습니다.</div>'
+        '<div class="rr-info-box">확인된 상태 변화만 표시합니다. 잠깐 나타났다가 확인 전에 사라진 움직임은 제외합니다. 어느 시장이 먼저 움직였는지에 의미를 붙이거나 다음 움직임을 예측하지 않습니다.</div>'
         '</section>'
     )
 
@@ -377,7 +377,7 @@ def render_past_credit_episodes_compact_markdown(data: dict | None, *, max_episo
     """지난 기록을 모바일 3열 표로 압축한다."""
     data = data or {}
     episodes = list(data.get("past_episodes") or [])
-    lines = ["### 지난 기업 신용 변화 기록"]
+    lines = ["### 지난 신용 변화"]
     if not episodes:
         lines.append("현재 제공되는 공식 자료로 다시 계산했을 때 끝난 지난 변화 기록이 없습니다.")
     else:
@@ -391,6 +391,6 @@ def render_past_credit_episodes_compact_markdown(data: dict | None, *, max_episo
             lines += ["", f"최근 {max_episodes}개만 보여줍니다. 전체 기록은 데이터에 보존돼 있습니다."]
     lines += [
         "",
-        "> **현재 제공되는 공식 자료로 다시 계산한 기록**입니다. 원자료가 수정되거나 제공 기간이 달라지면 과거 날짜와 포함된 시장도 바뀔 수 있습니다. 과거 위기와 닮았다는 뜻도, 다음 위기의 순서나 확률을 예측한다는 뜻도 아닙니다.",
+        "> 현재 제공되는 공식 자료로 다시 계산한 기록입니다. 원자료가 수정되거나 제공 기간이 달라지면 과거 날짜와 포함된 시장도 바뀔 수 있습니다. 과거 위기와 닮았다는 뜻도, 다음 위기의 순서나 확률을 예측한다는 뜻도 아닙니다.",
     ]
     return "\n".join(lines)

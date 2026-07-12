@@ -146,7 +146,7 @@ def test_credit_timeline_is_scan_list_and_keeps_safety_text():
 
 def test_v074_source_is_scan_first_and_mobile_two_column_core_grid():
     source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
-    assert 'with gr.Tab("오늘")' in source
+    assert 'with gr.Tab("현황")' in source
     assert 'with gr.Tab("신용")' in source
     assert 'gr.Checkbox(value=True, label="변화 있는 항목만 보기")' not in source
     assert ".rr-core-grid { display:grid; grid-template-columns:repeat(3" in source
