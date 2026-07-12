@@ -1,0 +1,53 @@
+name: apply-v0.8.3-hotfix
+
+on:
+  push:
+    branches:
+      - agent/v0.8.3-hotfix
+    paths:
+      - .github/workflows/apply-v0.8.3-hotfix.yml
+      - scripts/apply_v0_8_3_hotfix.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v0.8.3-hotfix
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply hotfix
+        run: python scripts/apply_v0_8_3_hotfix.py
+
+      - name: Install
+        run: pip install -e '.[ui,dev]'
+
+      - name: Full test suite
+        run: pytest -q
+
+      - name: Gradio smoke
+        run: |
+          python - <<'PY'
+          from riskradar.ui import build_app
+          app = build_app()
+          assert type(app).__name__ == 'Blocks'
+          print(type(app).__name__)
+          PY
+
+      - name: Commit validated hotfix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Apply v0.8.3 release consistency hotfix'
+          git push origin HEAD:agent/v0.8.3-hotfix
