@@ -1,0 +1,19 @@
+........................................................................ [ 29%]
+.........................................................F.............. [ 58%]
+........................................................................ [ 87%]
+................................                                         [100%]
+=================================== FAILURES ===================================
+___ test_relationship_guide_covers_credit_ladder_cp_and_external_references ____
+
+    def test_relationship_guide_covers_credit_ladder_cp_and_external_references():
+        text = plain_language(RELATIONSHIP_GUIDE)
+        assert "기업 신용" in text
+        assert "단기 기업자금의 신용도별 금리 차이" in text
+        assert "외부 참고 지표" in text
+>       assert "BBB 기업" in text
+E       AssertionError: assert 'BBB 기업' in '\n## 지표를 같이 보는 법\n\n한 지표의 방향을 다른 지표의 원인으로 단정하지 않습니다. 대신 **어느 시장까지 같은 움직임이 나타나는지** 봅니다.\n\n### VIX와 기업 신용\n\n| 같이 보이는 ... 시장지표에 미치는 영향은 `끌어올리는 요인`, `낮추는 요인`처럼 말합니다.\n3. 경기침체·투자 감소·위기 같은 2차 결과는 단정하지 않습니다.\n4. 지표들이 엇갈리면 한 방향으로 억지로 묶지 않습니다.\n'
+
+tests/test_v0_5_1_guides_and_telegram.py:110: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_v0_5_1_guides_and_telegram.py::test_relationship_guide_covers_credit_ladder_cp_and_external_references - AssertionError: assert 'BBB 기업' in '\n## 지표를 같이 보는 법\n\n한 지표의 방향을 다른 지표의 원인으로 단정하지 않습니다. 대신 **어느 시장까지 같은 움직임이 나타나는지** 봅니다.\n\n### VIX와 기업 신용\n\n| 같이 보이는 ... 시장지표에 미치는 영향은 `끌어올리는 요인`, `낮추는 요인`처럼 말합니다.\n3. 경기침체·투자 감소·위기 같은 2차 결과는 단정하지 않습니다.\n4. 지표들이 엇갈리면 한 방향으로 억지로 묶지 않습니다.\n'
+1 failed, 247 passed in 53.45s
