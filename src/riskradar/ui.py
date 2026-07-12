@@ -30,6 +30,7 @@ from .credit_timeline import (
 )
 from .aux_detail_view import render_aux_detail
 from .indicator_detail_view import render_indicator_detail
+from .deep_guides import guide_markdown
 from .relationship_guide import RELATIONSHIP_GUIDE
 from .today_view import render_credit_episode_markdown, render_today_markdown, render_today_summary_markdown
 from .overview_view import (
@@ -400,6 +401,8 @@ _UI_DATA_COMPATIBLE_VERSIONS = {
     "0.8.3": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3"},
     # v0.8.4는 전문 탭의 관계 맥락과 시각 문법만 복원하며 캐시 schema는 그대로다.
     "0.8.4": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3", "0.8.4"},
+    # v0.8.5는 지표별 상세 가이드만 복원하며 화면용 캐시 schema는 그대로다.
+    "0.8.5": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3", "0.8.4", "0.8.5"},
 }
 
 
@@ -996,6 +999,9 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         if aux_df is not None and not aux_df.empty
         and not aux_df.loc[aux_df["key"].astype(str) == key].empty
     }
+    aux_details["HY_BBB"] = plain_language(guide_markdown(
+        "HY_BBB", None, matrix=arts["signal_matrix"], aux_df=aux_df, data_quality=effective_dq
+    ))
     summary_md, warning_md = _data_status_summary(snapshot, store)
     history_source_md = f"**현재 30일 데이터 기준:** {snapshot.history_source}"
     if snapshot.history_error:

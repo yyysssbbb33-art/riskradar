@@ -10,6 +10,7 @@ import pandas as pd
 from .display_text import aux_name, core_name, plain_language, state_name
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .user_copy import indicator_summary, indicator_caution, movement_label, movement_result, movement_result_cell
+from .deep_guides import guide_markdown
 
 _FRESHNESS = {
     "normal": "최신",
@@ -155,5 +156,9 @@ def render_aux_detail(
         f"| {movement_label(key, 'flat')} | {movement_result_cell(key, 'flat')} |",
         "",
         f"> **참고:** {indicator_caution(key)}" if indicator_caution(key) else "",
+        "",
+        "---",
+        "",
+        guide_markdown(key, r, matrix=matrix, aux_df=aux_df),
     ]
     return "\n".join(parts)
