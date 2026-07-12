@@ -2,6 +2,11 @@ name: refresh
 
 on:
   workflow_dispatch: {}   # 수동 실행 버튼
+  push:
+    branches:
+      - main
+    paths:
+      - "src/riskradar/version.py"
 
 concurrency:
   group: riskradar-refresh   # 동시 실행 방지 (lock 대체)
