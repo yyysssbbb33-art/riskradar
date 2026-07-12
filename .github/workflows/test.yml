@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - "agent/**"
+      - "codex/**"
       - "codex-*"
   workflow_dispatch: {}
 
@@ -23,13 +24,26 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Repository hygiene
+        run: |
+          tracked_generated="$(git ls-files | grep -E '(^|/)(__pycache__|.*\.egg-info)(/|$)|\.pyc$|(^|/)pytest-output\.txt$|(^|/)HOTFIX_TEST_FAILURE\.txt$' || true)"
+          if [ -n "$tracked_generated" ]; then
+            echo "Generated artifacts must not be committed:"
+            echo "$tracked_generated"
+            exit 1
+          fi
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Install
         run: pip install -e ".[ui,dev]"
+
       - name: Test
         run: pytest -q
+
       - name: Gradio smoke
         run: |
           python - <<'PY'
