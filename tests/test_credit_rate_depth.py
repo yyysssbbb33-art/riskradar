@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from riskradar.context_view import render_credit_context_html, render_rate_context_html
+from riskradar.overview_view import render_credit_range_map_html
 from riskradar.ui import _is_compatible_data_code_version
 
 
@@ -34,7 +35,16 @@ def _aux() -> pd.DataFrame:
 def _quality() -> dict:
     return {
         "credit_episode": {
-            "current": {"scope_text": "HY와 BBB에서 상승이 확인되고 있습니다."},
+            "current": {
+                "scope_text": "HY와 BBB에서 상승이 확인되고 있습니다.",
+                "episode": {"participants": ["HY", "BBB"]},
+                "nodes": {
+                    "HY": {"available": True, "state": "newly_rising", "state_label": "상승 확인"},
+                    "BBB": {"available": True, "state": "early_change", "state_label": "상승 조짐"},
+                    "A": {"available": True, "state": "normal", "state_label": "특이 신호 없음"},
+                    "CP": {"available": True, "state": "normal", "state_label": "특이 신호 없음"},
+                },
+            },
             "lens": {"latest_value_bp": 260.0, "change_1m_bp": 9.0, "label": "HY 쪽 확대가 더 큽니다."},
         }
     }
@@ -65,8 +75,16 @@ def test_credit_and_rate_tabs_use_shared_context_visual_grammar_and_restore_mark
     assert "credit_context_component" in source
     assert "rate_context_component" in source
     assert "rr-context-card" in source
+    assert ".rr-credit-grid-2x2, .rr-rate-overview-grid" in source
     assert 'with gr.Accordion("시장 전체 참고 지표"' in source
     assert "visible=False" not in source[source.index('with gr.Tab("설명")'):]
+
+
+def test_credit_tab_has_one_section_heading_and_matches_narrow_mobile_columns():
+    html = render_credit_range_map_html(_quality(), _matrix(), _aux())
+    assert "<h2>기업 신용</h2>" not in html
+    source = (Path(__file__).parents[1] / "src" / "riskradar" / "ui.py").read_text(encoding="utf-8")
+    assert ".rr-mini-grid, .rr-metric-grid, .rr-credit-grid-2x2, .rr-context-grid" in source
 
 
 def test_v084_keeps_previous_ui_cache_compatibility():
