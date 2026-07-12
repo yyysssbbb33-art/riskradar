@@ -40,7 +40,25 @@ jobs:
         run: pip install -e '.[ui,dev]'
 
       - name: Full test suite
-        run: pytest -q
+        id: tests
+        shell: bash
+        run: |
+          set +e
+          pytest -q > pytest-output.txt 2>&1
+          status=$?
+          cat pytest-output.txt
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Publish test failure report
+        if: failure() && steps.tests.outputs.status != '0'
+        run: |
+          cp pytest-output.txt HOTFIX_TEST_FAILURE.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add HOTFIX_TEST_FAILURE.txt
+          git commit -m 'Record v0.8.3 hotfix test failure'
+          git push origin HEAD:agent/v0.8.3-hotfix
 
       - name: Gradio smoke
         run: |
