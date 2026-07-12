@@ -976,7 +976,6 @@ def render_credit_range_map_html(data_quality: dict | None,
     lens_direction = _direction_symbol(lens_change)
     return (
         '<section class="rr-credit-visual">'
-        '<div class="rr-section-title"><h2>기업 신용</h2></div>'
         '<div class="rr-credit-grid-2x2">'
         + ''.join(node_card(node) for node in ("HY", "BBB", "A", "CP")) +
         '</div>'

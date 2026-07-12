@@ -17,6 +17,7 @@ from . import config as C
 from . import aux_config as AC
 from . import rate_composition as RC
 from . import rate_view as RV
+from .context_view import render_credit_context_html, render_rate_context_html
 from .display_text import (LABEL_1M, LABEL_3M, LABEL_3Y, LABEL_5Y, LABEL_10Y,
                            aux_name, axis_name, core_name, lens_name, plain_language, state_name)
 from .formatting import fmt_change, fmt_pct, fmt_value
@@ -188,6 +189,33 @@ APP_CSS = r"""
 .rr-compact-table thead th { font-size:.78rem; opacity:.68; }
 
 
+/* v0.8.4 신용·금리 공통 관계 카드 */
+.rr-tab-intro { margin:2px 0 11px; color:var(--body-text-color-subdued); line-height:1.55; }
+.rr-context-section { margin:18px 0 16px; }
+.rr-context-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.rr-context-card { border:1px solid var(--border-color-primary); border-radius:14px; padding:13px; background:var(--background-fill-primary); min-width:0; box-shadow:0 5px 18px rgba(20,32,55,.045); }
+.rr-context-domain-credit { border-top:3px solid color-mix(in srgb, var(--rr-amber, #d68b1f) 72%, transparent); }
+.rr-context-domain-rate { border-top:3px solid color-mix(in srgb, var(--rr-blue, #4f73d9) 72%, transparent); }
+.rr-context-kicker { color:var(--body-text-color-subdued); font-size:.76rem; font-weight:800; }
+.rr-context-card h3 { margin:4px 0 10px; font-size:1rem; letter-spacing:-.015em; }
+.rr-context-metrics { border-top:1px solid var(--border-color-primary); }
+.rr-context-metric { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:9px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border-color-primary); font-size:.82rem; }
+.rr-context-metric div { min-width:0; }
+.rr-context-metric strong, .rr-context-metric small { display:block; }
+.rr-context-metric small { margin-top:2px; color:var(--body-text-color-subdued); font-weight:400; }
+.rr-context-metric span, .rr-context-metric b { white-space:nowrap; }
+.rr-context-reading { margin-top:10px; line-height:1.5; font-size:.87rem; }
+.rr-context-caution { margin-top:9px; padding-top:8px; border-top:1px dashed var(--border-color-primary); color:var(--body-text-color-subdued); font-size:.78rem; line-height:1.45; }
+
+/* 두 전문 탭의 핵심 카드 문법을 동일하게 맞춘다. */
+.rr-credit-grid-2x2, .rr-rate-overview-grid { gap:9px; margin:8px 0 14px; }
+.rr-credit-tile, .rr-metric-card { border-radius:14px; padding:13px; }
+.rr-credit-tile-head strong, .rr-metric-name { font-size:1rem; font-weight:900; }
+.rr-credit-tile-head small, .rr-metric-subtitle { font-size:.76rem; opacity:.62; min-height:1.2em; }
+.rr-credit-tile-value, .rr-metric-value { font-size:1.45rem; margin:12px 0 5px; }
+.rr-credit-tile-state, .rr-metric-state { font-size:.84rem; min-height:1.3em; }
+.rr-credit-tile-change, .rr-metric-change { margin-top:7px; font-size:.84rem; }
+
 /* v0.8.1 Visual Polish: 차분한 금융 대시보드 색 체계 */
 .gradio-container {
   --rr-blue:#4f73d9;
@@ -318,6 +346,7 @@ APP_CSS = r"""
   .rr-interpretation-grid { grid-template-columns:1fr; }
   .rr-mini-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .rr-change-list li { grid-template-columns:1fr; gap:4px; }
+  .rr-context-grid { grid-template-columns:1fr; }
   .rr-domain-strip { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
   .rr-domain-card { padding:10px 8px; }
   .rr-domain-metric { display:block; }
@@ -342,7 +371,7 @@ APP_CSS = r"""
 	  .rr-curve-summary { align-items:flex-start; flex-direction:column; }
 	}
 @media (max-width:420px) {
-  .rr-mini-grid, .rr-metric-grid { grid-template-columns:1fr; }
+  .rr-mini-grid, .rr-metric-grid, .rr-credit-grid-2x2, .rr-context-grid { grid-template-columns:1fr; }
 }
 """
 
@@ -369,6 +398,8 @@ _UI_DATA_COMPATIBLE_VERSIONS = {
     # v0.8.2와 v0.8.3은 UI·문구·릴리스 일관성 패치이며 화면용 캐시 schema는 그대로다.
     "0.8.2": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2"},
     "0.8.3": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3"},
+    # v0.8.4는 전문 탭의 관계 맥락과 시각 문법만 복원하며 캐시 schema는 그대로다.
+    "0.8.4": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3", "0.8.4"},
 }
 
 
@@ -1003,6 +1034,8 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         "evidence_balance": render_evidence_balance_markdown(effective_dq, aux_df),
         "core_cards_all": core_cards_all,
         "credit_map": render_credit_range_map_html(effective_dq, arts["signal_matrix"], aux_df),
+        "credit_context_html": render_credit_context_html(effective_dq, arts["signal_matrix"], aux_df),
+        "rate_context_html": render_rate_context_html(arts["signal_matrix"], aux_df, snapshot.rate_composition),
         "board": _board_df(arts["signal_matrix"]),
         "details": details,
         "aux_details": aux_details,
@@ -1098,8 +1131,10 @@ def build_app():
                 decision_basis_component = gr.Markdown(initial["decision_basis"])
 
         with gr.Tab("신용"):
-            gr.Markdown("회사채 수치는 비슷한 만기의 국채 대비 추가 금리입니다.")
+            gr.Markdown("## 신용 현황")
+            gr.HTML('<div class="rr-tab-intro">회사채 OAS는 비슷한 만기의 국채 대비 추가 금리입니다. 현재 수준·최근 변화·어느 등급과 시장까지 같은 방향이 나타나는지를 함께 봅니다.</div>')
             credit_map_component = gr.HTML(initial["credit_map"])
+            credit_context_component = gr.HTML(initial["credit_context_html"])
             credit_timeline_component = gr.HTML(initial["credit_timeline_html"])
             with gr.Accordion("지난 신용 변화", open=False, elem_classes="rr-detail-accordion"):
                 past_credit_episodes_component = gr.Markdown(initial["past_credit_episodes_compact"])
@@ -1117,8 +1152,10 @@ def build_app():
 
         with gr.Tab("금리"):
             gr.Markdown("## 금리 현황")
+            gr.HTML('<div class="rr-tab-intro">현재 금리 수준과 최근 변화를 먼저 보고, 단기·장기 관계와 실질금리·물가 관련 금리 차이·Term Premium의 방향을 따로 확인합니다.</div>')
             rate_overview_component = gr.HTML(initial["rate_overview_html"])
             rate_curve_component = gr.HTML(initial["rate_curve_html"])
+            rate_context_component = gr.HTML(initial["rate_context_html"])
 
             gr.Markdown("## 30Y 금리 변화 나눠보기")
             rate_scan_component = gr.HTML(initial["rate_scan_html"])
@@ -1224,9 +1261,13 @@ def build_app():
 
             guide_selector.change(fn=_guide_card, inputs=guide_selector, outputs=guide_card)
 
-            market_reference_components = {}
-            for key in ("NFCI", "STLFSI"):
-                market_reference_components[key] = gr.Markdown(visible=False, value=initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다."))
+            with gr.Accordion("시장 전체 참고 지표", open=False, elem_classes="rr-detail-accordion"):
+                market_reference_components = {}
+                for key in ("NFCI", "STLFSI"):
+                    with gr.Accordion(f"{aux_name(key)} 설명", open=False, elem_classes="rr-detail-accordion"):
+                        market_reference_components[key] = gr.Markdown(
+                            initial["aux_details"].get(key, "현재 데이터를 읽을 수 없습니다.")
+                        )
 
             with gr.Accordion("RiskRadar 읽는 법", open=False, elem_classes="rr-detail-accordion"):
                 gr.Markdown(GUIDE_INTRO)
@@ -1258,6 +1299,8 @@ def build_app():
             rate_reference_component,
             rate_notes_component,
             credit_map_component,
+            credit_context_component,
+            rate_context_component,
             credit_timeline_component,
             past_credit_episodes_component,
             credit_component,
@@ -1305,6 +1348,8 @@ def build_app():
                 payload["rate_reference_html"],
                 payload["rate_notes_html"],
                 payload["credit_map"],
+                payload["credit_context_html"],
+                payload["rate_context_html"],
                 payload["credit_timeline_html"],
                 payload["past_credit_episodes_compact"],
                 payload["credit"],
