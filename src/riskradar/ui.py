@@ -30,6 +30,7 @@ from .credit_timeline import (
 )
 from .aux_detail_view import render_aux_detail
 from .indicator_detail_view import render_indicator_detail
+from .deep_guides import guide_markdown
 from .relationship_guide import RELATIONSHIP_GUIDE
 from .today_view import render_credit_episode_markdown, render_today_markdown, render_today_summary_markdown
 from .overview_view import (
@@ -400,6 +401,8 @@ _UI_DATA_COMPATIBLE_VERSIONS = {
     "0.8.3": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3"},
     # v0.8.4는 전문 탭의 관계 맥락과 시각 문법만 복원하며 캐시 schema는 그대로다.
     "0.8.4": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3", "0.8.4"},
+    # v0.8.5는 지표별 상세 가이드만 복원하며 화면용 캐시 schema는 그대로다.
+    "0.8.5": {"0.7.0", "0.7.1", "0.7.2", "0.7.3", "0.7.4", "0.8.0", "0.8.1", "0.8.2", "0.8.3", "0.8.4", "0.8.5"},
 }
 
 
@@ -960,6 +963,8 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
     frames = _frames_from_chart_data(arts.get("chart_data", pd.DataFrame()))
     # 저장된 원본 metadata와 UI fallback 결과를 분리한다.
     effective_dq = _today_context_with_fallback(snapshot.data_quality, arts, aux_df)
+    effective_dq = dict(effective_dq or {})
+    effective_dq["rate_composition"] = snapshot.rate_composition
     today_summary_md = render_today_summary_markdown(effective_dq, aux_df)
     today_md = render_today_markdown(effective_dq, aux_df)
     credit_md = render_credit_episode_markdown(effective_dq)
@@ -996,6 +1001,9 @@ def _dynamic_payload(snapshot: DashboardSnapshot, selected_key: str, store) -> d
         if aux_df is not None and not aux_df.empty
         and not aux_df.loc[aux_df["key"].astype(str) == key].empty
     }
+    aux_details["HY_BBB"] = plain_language(guide_markdown(
+        "HY_BBB", None, matrix=arts["signal_matrix"], aux_df=aux_df, data_quality=effective_dq
+    ))
     summary_md, warning_md = _data_status_summary(snapshot, store)
     history_source_md = f"**현재 30일 데이터 기준:** {snapshot.history_source}"
     if snapshot.history_error:
@@ -1142,7 +1150,9 @@ def build_app():
                 credit_component = gr.Markdown(initial["credit"])
             with gr.Accordion("지표 뜻과 읽는 법", open=False, elem_classes="rr-detail-accordion"):
                 with gr.Accordion(f"{lens_name('HY_BBB')} 설명", open=False, elem_classes="rr-detail-accordion"):
-                    gr.Markdown(_static_guide_card("HY_BBB"))
+                    credit_hy_bbb_detail_component = gr.Markdown(
+                        initial["aux_details"].get("HY_BBB", "현재 데이터를 읽을 수 없습니다.")
+                    )
                 credit_aux_detail_components = {}
                 for key in ("BBBOAS", "AOAS", "CPSPREAD"):
                     with gr.Accordion(f"{aux_name(key)} 설명", open=False, elem_classes="rr-detail-accordion"):
@@ -1254,12 +1264,20 @@ def build_app():
 
         with gr.Tab("설명"):
             guide_selector = gr.Dropdown(choices=guide_choices, value=default_key, label="상세 설명을 볼 지표")
-            guide_card = gr.Markdown(_static_guide_card(default_key))
+            details_state = gr.State(initial["details"])
+            aux_details_state = gr.State(initial["aux_details"])
+            guide_card = gr.Markdown(initial["details"].get(default_key, "현재 데이터를 읽을 수 없습니다."))
 
-            def _guide_card(key):
+            def _guide_card(key, details, aux_details):
+                details = details or {}
+                aux_details = aux_details or {}
+                if key in details:
+                    return details.get(key, "현재 데이터를 읽을 수 없습니다.")
+                if key in aux_details:
+                    return aux_details.get(key, "현재 데이터를 읽을 수 없습니다.")
                 return _static_guide_card(key)
 
-            guide_selector.change(fn=_guide_card, inputs=guide_selector, outputs=guide_card)
+            guide_selector.change(fn=_guide_card, inputs=[guide_selector, details_state, aux_details_state], outputs=guide_card)
 
             with gr.Accordion("시장 전체 참고 지표", open=False, elem_classes="rr-detail-accordion"):
                 market_reference_components = {}
@@ -1304,10 +1322,14 @@ def build_app():
             credit_timeline_component,
             past_credit_episodes_component,
             credit_component,
+            credit_hy_bbb_detail_component,
             *[credit_aux_detail_components[k] for k in ("BBBOAS", "AOAS", "CPSPREAD")],
             *[rate_core_detail_components[k] for k in ("DGS30", "DGS2", "DFII10", "T10Y3M")],
             *[rate_aux_detail_components[k] for k in ("BREAKEVEN", "TERMPREM")],
             *[market_reference_components[k] for k in ("NFCI", "STLFSI")],
+            details_state,
+            aux_details_state,
+            guide_card,
             history_source_component,
             monthly_component,
             history_state,
@@ -1353,10 +1375,14 @@ def build_app():
                 payload["credit_timeline_html"],
                 payload["past_credit_episodes_compact"],
                 payload["credit"],
+                payload["aux_details"].get("HY_BBB", "현재 데이터를 읽을 수 없습니다."),
                 *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("BBBOAS", "AOAS", "CPSPREAD")],
                 *[payload["details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("DGS30", "DGS2", "DFII10", "T10Y3M")],
                 *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("BREAKEVEN", "TERMPREM")],
                 *[payload["aux_details"].get(k, "현재 데이터를 읽을 수 없습니다.") for k in ("NFCI", "STLFSI")],
+                payload["details"],
+                payload["aux_details"],
+                (payload["details"].get(selected_key or default_key) or payload["aux_details"].get(selected_key or default_key) or "현재 데이터를 읽을 수 없습니다."),
                 payload["history_source"],
                 payload["monthly"],
                 payload["history"],

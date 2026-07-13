@@ -10,6 +10,7 @@ import pandas as pd
 from .display_text import aux_name, core_name, plain_language, state_name
 from .formatting import fmt_change, fmt_pct, fmt_value
 from .user_copy import indicator_summary, indicator_caution, movement_label, movement_result, movement_result_cell
+from .deep_guides import guide_markdown
 
 _FRESHNESS = {
     "normal": "최신",
@@ -118,42 +119,6 @@ def render_aux_detail(
     aux_df: pd.DataFrame | None = None,
     matrix: pd.DataFrame | None = None,
 ) -> str:
-    """현재 함께 볼 지표 데이터 + 결과별 가이드 + 8칸 상세카드."""
+    """보조지표 deep guide를 현재 스냅샷 기반으로 한 번만 렌더링한다."""
     r = pd.Series(row)
-    key = str(r.get("key", ""))
-    value = fmt_value(r.get("latest_value"), str(r.get("value_unit", "")))
-    change = fmt_change(r.get("change_1m"), str(r.get("change_unit", "")))
-    direction = _DIR_TEXT.get(str(r.get("direction", "확인 불가")), "확인 불가")
-    fresh = _FRESHNESS.get(str(r.get("staleness_label", "unknown")), "확인 불가")
-    latest_date = str(r.get("latest_date") or "확인 불가")
-
-    up, down, flat = _BRANCHES.get(key, ("", "", ""))
-    parts = [
-        "## 지금 데이터로 보면",
-        "",
-        indicator_summary(key),
-        "",
-        "| 항목 | 현재 |",
-        "|---|---|",
-        f"| 최신값 | {value} |",
-        f"| 1개월 변화 | {change} |",
-        f"| 최근 방향 | {direction} |",
-        f"| 현재 자료 범위 안 위치 | {_aux_level_text(key, r)} |",
-        f"| 관측일 | {latest_date} · {fresh} |",
-        "",
-        "### 지금 이렇게 읽습니다",
-        _current_reading(key, r),
-        "",
-        "### 같이 볼 지표",
-        *_companion_table(key, aux_df, matrix),
-        "",
-        "### 움직임별 결과",
-        "| 움직임 | 결과적으로 볼 수 있는 변화 |",
-        "|---|---|",
-        f"| {movement_label(key, 'up')} | {movement_result_cell(key, 'up')} |",
-        f"| {movement_label(key, 'down')} | {movement_result_cell(key, 'down')} |",
-        f"| {movement_label(key, 'flat')} | {movement_result_cell(key, 'flat')} |",
-        "",
-        f"> **참고:** {indicator_caution(key)}" if indicator_caution(key) else "",
-    ]
-    return "\n".join(parts)
+    return guide_markdown(str(r.get("key", "")), r, matrix=matrix, aux_df=aux_df)
