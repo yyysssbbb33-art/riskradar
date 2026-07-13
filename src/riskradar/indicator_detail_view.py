@@ -15,6 +15,7 @@ from .formatting import fmt_change, fmt_pct, fmt_value
 from .external_guidance import render_external_guidance
 from .state_guidance import render_state_guidance
 from .user_copy import indicator_caution, indicator_summary, render_movement_table
+from .deep_guides import guide_markdown
 
 
 # 어떤 조합이 어떤 핵심지표와 직접 연결되는지 명시적으로 관리한다.
@@ -104,40 +105,16 @@ def render_indicator_detail(
     aux_df: pd.DataFrame | None = None,
     matrix: pd.DataFrame | None = None,
 ) -> str:
-    """현재 데이터 요약 + 현재 연결 조합 + 고정 8칸 카드를 한 문서로 렌더링한다."""
+    """지표별 deep guide를 현재 스냅샷 기반으로 한 번만 렌더링한다."""
     r = pd.Series(row)
     key = str(r["key"])
-
-    facts = [
-        "## 지금 데이터로 보면",
-        "",
-        "| 항목 | 현재 |",
-        "|---|---|",
-        f"| 최신값 | {fmt_value(r['latest_value'], r['value_unit'])} |",
-        f"| 상태 | {state_name(str(r.get('state_code', '')), str(r.get('state_label', '')), drop=bool(r.get('drop_flag', False)), key=key)} |",
-        f"| {LABEL_1M} | {fmt_change(r['change_20obs'], r['change_unit'])} |",
-        f"| {LABEL_3M} | {fmt_change(r['change_60obs'], r['change_unit'])} |",
-        f"| 관측일 | {r['latest_observed_date']} |",
-        "",
-        "| 비교 범위 | 현재 위치 |",
-        "|---|---|",
-        f"| {LABEL_5Y} | {fmt_pct(r['percentile_5y'])} |",
-        f"| {LABEL_10Y} | {fmt_pct(r['percentile_10y'])} |",
-        "",
-        "### 무엇을 보나",
-        indicator_summary(key),
-        "",
-        "### 지금 이렇게 읽습니다",
-        f"> {one_line}",
-        "",
-        render_movement_table(key),
-        "",
-        f"> **참고:** {indicator_caution(key)}" if indicator_caution(key) else "",
-        "",
+    parts = [
+        guide_markdown(
+            key, r, matrix=matrix, aux_df=aux_df, data_quality=data_quality,
+            rate_summary=(data_quality or {}).get("rate_composition"), one_line=one_line,
+        ),
         render_state_guidance(key, r, frames=frames, aux_df=aux_df, matrix=matrix),
-        "",
         render_external_guidance(key),
-        "",
         _linked_combo_markdown(data_quality, key),
     ]
-    return "\n".join(facts)
+    return "\n\n".join(part for part in parts if part)
