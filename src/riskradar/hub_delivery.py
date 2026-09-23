@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -55,6 +56,10 @@ def send_hub(source_id: str, message: str, title: str, *, event_id: str | None =
             with urlopen(request, timeout=12) as response:
                 if response.status != 202:
                     all_accepted = False
+        except HTTPError as error:
+            # Log only the status; never expose URL, response body, payload or keys.
+            LOG.warning("Notification Hub HTTP %d; Telegram delivery is unaffected", error.code)
+            all_accepted = False
         except Exception as error:
             # Never log secrets, complete private payloads or server response bodies.
             LOG.warning("Notification Hub delivery failed (%s); Telegram delivery is unaffected",
