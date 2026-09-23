@@ -1,0 +1,35 @@
+name: Notification Hub RiskRadar source test
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONPATH: src
+      NH_BRIDGE_URL: ${{ secrets.NH_BRIDGE_URL }}
+      NH_BRIDGE_KEY: ${{ secrets.NH_BRIDGE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Send one unique riskradar event (no data fetch or Telegram)
+        run: |
+          python - <<'PY'
+          import os
+          import uuid
+          from riskradar.hub_delivery import send_hub
+
+          if not os.getenv("NH_BRIDGE_URL") or not os.getenv("NH_BRIDGE_KEY"):
+              raise SystemExit("NH_BRIDGE_URL / NH_BRIDGE_KEY secrets are not configured")
+          event_id = f"test-{uuid.uuid4().hex}"
+          if not send_hub("riskradar", "RiskRadar 소스별 알림 테스트", "Notification Hub 테스트", event_id=event_id):
+              raise SystemExit("Hub bridge did not accept the test event")
+          print("FCM accepted the test request; verify handset notification AND app inbox.")
+          PY
