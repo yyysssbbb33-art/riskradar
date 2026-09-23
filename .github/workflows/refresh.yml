@@ -31,4 +31,6 @@ jobs:
           HF_DATASET_REPO_ID: ${{ secrets.HF_DATASET_REPO_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NH_BRIDGE_URL: ${{ secrets.NH_BRIDGE_URL }}
+          NH_BRIDGE_KEY: ${{ secrets.NH_BRIDGE_KEY }}
         run: python run_refresh.py
