@@ -70,6 +70,10 @@ def send(text: str, token: str | None = None, chat_id: str | None = None) -> boo
             timeout=10,
         )
         r.raise_for_status()
+        # Existing Telegram transport stays primary during migration. Hub failures
+        # are isolated and do not change refresh status.
+        from .hub_delivery import send_hub
+        send_hub("riskradar", text, "RiskRadar 업데이트")
         return True
     except Exception as e:  # noqa: BLE001
         log.warning("telegram send failed: %s", e)
