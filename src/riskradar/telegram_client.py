@@ -60,24 +60,28 @@ def _shorten(text: str, limit: int = 220) -> str:
 def send(text: str, token: str | None = None, chat_id: str | None = None) -> bool:
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
+    telegram_ok = False
     if not token or not chat_id:
-        log.warning("telegram creds missing; skip send")
-        return False
+        log.warning("telegram creds missing; skip Telegram send")
+    else:
+        try:
+            r = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+                timeout=10,
+            )
+            r.raise_for_status()
+            telegram_ok = True
+        except Exception as e:  # noqa: BLE001
+            log.warning("telegram send failed: %s", e)
+    # Hub is an independent migration channel. Its result must not change the
+    # established return value, which still reports Telegram success.
     try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
-            timeout=10,
-        )
-        r.raise_for_status()
-        # Existing Telegram transport stays primary during migration. Hub failures
-        # are isolated and do not change refresh status.
         from .hub_delivery import send_hub
         send_hub("riskradar", text, "RiskRadar 업데이트")
-        return True
     except Exception as e:  # noqa: BLE001
-        log.warning("telegram send failed: %s", e)
-        return False
+        log.warning("Notification Hub mirror failed: %s", type(e).__name__)
+    return telegram_ok
 
 
 def _fmt_row(r: pd.Series) -> str:
