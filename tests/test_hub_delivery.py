@@ -23,3 +23,19 @@ def test_hub_mirror_is_attempted_when_telegram_fails():
          patch("riskradar.hub_delivery.send_hub") as mirror:
         assert send_telegram("시장 업데이트", token="token", chat_id="chat") is False
         mirror.assert_called_once()
+
+def test_bridge_http_error_displays_status_without_leaking_credentials(caplog):
+    from urllib.error import HTTPError
+
+    with patch.dict(os.environ, {
+        "NH_BRIDGE_URL": "https://example.test/api/notify",
+        "NH_BRIDGE_KEY": "private-bridge-key-for-test",
+    }), patch("riskradar.hub_delivery.urlopen", side_effect=HTTPError(
+        "https://example.test/api/notify", 401, "Unauthorized", {}, None
+    )):
+        assert send_hub("riskradar", "private-payload", "secret-title") is False
+
+    assert "HTTP 401" in caplog.text
+    assert "private-bridge-key-for-test" not in caplog.text
+    assert "private-payload" not in caplog.text
+    assert "https://example.test" not in caplog.text
